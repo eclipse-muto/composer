@@ -1,4 +1,7 @@
-# Muto Agent
+
+[![Catkin Make (Build and Test)](https://github.com/eclipse-muto/composer/actions/workflows/catkin-build.yml/badge.svg?branch=main)](https://github.com/eclipse-muto/composer/actions/workflows/catkin-build.yml)
+
+# Muto Composer
 
 ## Build
 After you checkou the repository, ource your ROS environment and make sure the additional dependencies such as the eclipse paho mqtt client library is installed.
