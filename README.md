@@ -162,3 +162,10 @@ You can use any open-source mqtt client to issue these commands and monitor vari
   mosquitto_pub -d -h sandbox.composiv.ai -p 1883  -t "ai.composiv.sandbox.f1tenth:simulator-monster-01/stack/commands/active" -m '{"name":"Composiv Learning Simulator with Gap Follwer","context":"eteration_office","stackId":"ai.composiv.sandbox.f1tenth:composiv_simulator_gf.launch","stack":[{"thingId":"ai.composiv.sandbox.f1tenth:composiv_simulator.launch"}],"node":[{"name":"cass_gap_follower","pkg":"cass_gap_follower","exec":"cass_gap_follower","param":[{"from":"$(find cass_gap_follower)/params.yaml"}]}]}'
 
 ```
+
+
+## Controlling the F1Tenth Car (navigate on/off) 
+
+```bash
+rostopic pub --once /mux std_msgs/Int32MultiArray "{layout: { dim: [], data_offset: 0}, data: [0, 0, 0, 0, 1 , 0] }"
+```

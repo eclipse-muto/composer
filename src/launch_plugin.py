@@ -116,9 +116,12 @@ class MutoDefaultLaunchPlugin(object):
         if plan.planned:
             # context = json.loads(msg.context)
             # self.bootstrap(context)
-            stack =  json.loads(plan.planned.stack)
-            #Apply is different than start kill etc. It will use the node "action"
-            self.device.kill(stack) 
+            try:
+                stack =  json.loads(plan.planned.stack)
+                #Apply is different than start kill etc. It will use the node "action"
+                self.device.kill(stack) 
+            except Exception as error:
+              print('Cannot parse stack: {}'.format(error))
 
             result = PluginResponse(resultCode=0, errorMessage="", errorDescription="")
             plan.result = result
