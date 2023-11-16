@@ -15,6 +15,9 @@ jobs:
           ln -s $(pwd) $(pwd)/tmp/muto/src/composer
           cd $(pwd)/tmp/muto
           . /opt/ros/humble/setup.bash
+          rosdep init
+          rosdep update
+          rosdep install --from-path src --ignore-src -r -y --rosdistro humble
           colcon build
           . install/setup.bash
           colcon test
