@@ -20,9 +20,7 @@ setup(
     zip_safe=True,
     maintainer='Composiv',
     maintainer_email='info@composiv.ai',
-    description="""
-    Eclipse Muto's Composer component that is responsible for the lifecycle of ROS nodes 
-    """,
+    description="Eclipse Muto's Composer component that is responsible for the lifecycle of ROS nodes",
     license='EPL',
     tests_require=['pytest'],
     entry_points={
