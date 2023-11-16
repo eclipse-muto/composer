@@ -15,7 +15,6 @@ jobs:
           ln -s $(pwd) $(pwd)/tmp/muto/src/composer
           cd $(pwd)/tmp/muto
           . /opt/ros/humble/setup.sh
-          add-apt-repository universe
           apt-get update
           apt-get install python3-pip
           rosdep update
