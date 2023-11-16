@@ -1,5 +1,5 @@
-from setuptools import setup
 import os
+from setuptools import setup
 from glob import glob
 
 package_name = 'composer'
@@ -18,18 +18,18 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='deniz',
-    maintainer_email='deniz@todo.todo',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    maintainer='Composiv',
+    maintainer_email='info@composiv.ai',
+    description="""
+    Eclipse Muto's Composer component that is responsible for the lifecycle of ROS nodes 
+    """,
+    license='EPL',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'muto_composer = composer.muto_composer:main',
             'compose_plugin = composer.compose_plugin:main',
             'launch_plugin = composer.launch_plugin:main',
-            'introspector = composer.introspector:main',
-            'log_publisher = composer.log_publisher:main'
         ],
     },
 )
