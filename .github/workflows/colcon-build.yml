@@ -17,11 +17,11 @@ jobs:
           apt-get update -y
           apt-get install python3-pip -y
           pip3 install setuptools==58.2.0
-          source /opt/ros/humble/setup.bash
+          . /opt/ros/humble/setup.bash
           rosdep update -y
           rosdep install --from-path src --ignore-src -r -y --rosdistro humble
           colcon build
-          source install/setup.bash
+          . install/setup.bash
           colcon test
           colcon test-result --all --verbose
         name: Composer ROS2 Humble container build
