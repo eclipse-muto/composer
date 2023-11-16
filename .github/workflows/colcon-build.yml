@@ -15,8 +15,8 @@ jobs:
           ln -s $(pwd) $(pwd)/tmp/muto/src/composer
           cd $(pwd)/tmp/muto
           . /opt/ros/humble/setup.sh
-          apt-get update
-          apt-get install python3-pip
+          apt-get update -y
+          apt-get install python3-pip -y
           rosdep update
           rosdep install --from-path src --ignore-src -r -y --rosdistro humble
           colcon build
