@@ -14,7 +14,7 @@ jobs:
           mkdir -p $(pwd)/tmp/muto/src/
           ln -s $(pwd) $(pwd)/tmp/muto/src/composer
           cd $(pwd)/tmp/muto
-          . /opt/ros/humble/setup.bash
+          . /opt/ros/humble/setup.sh
           rosdep init
           rosdep update
           rosdep install --from-path src --ignore-src -r -y --rosdistro humble
