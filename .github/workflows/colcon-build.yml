@@ -14,14 +14,14 @@ jobs:
           mkdir -p $(pwd)/tmp/muto/src/
           ln -s $(pwd) $(pwd)/tmp/muto/src/composer
           cd $(pwd)/tmp/muto
-          . /opt/ros/humble/setup.sh
           apt-get update -y
           apt-get install python3-pip -y
           pip3 install setuptools==58.2.0
+          source /opt/ros/humble/setup.bash
           rosdep update -y
           rosdep install --from-path src --ignore-src -r -y --rosdistro humble
           colcon build
-          . install/setup.bash
+          source install/setup.bash
           colcon test
           colcon test-result --all --verbose
-        name: Build in ros2 container
+        name: Composer ROS2 Humble container build
