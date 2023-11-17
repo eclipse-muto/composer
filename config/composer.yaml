@@ -14,3 +14,13 @@
 #    Composiv.ai, Eteration A.S. - initial API and implementation
 #
 #
+/**:
+  ros__parameters:
+    name: nacid-docker-01
+    namespace: org.eclipse.muto.sandbox # subject to change
+    stack_topic: /stack
+    twin_topic: /twin
+    type: simulator
+    twin_url: "http://ditto:ditto@sandbox.composiv.ai"
+    anonymous: False  # Use this for automatically generated id (uuid based)
+  #   if anonymous is True or anynoymous param is missing, name/id will be auto generated

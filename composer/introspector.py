@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2022 Composiv.ai, Eteration A.S. and others
+#  Copyright (c) 2023 Composiv.ai, Eteration A.S. and others
 #
 # All rights reserved. This program and the accompanying materials
 # are made available under the terms of the Eclipse Public License v2.0
@@ -13,23 +13,19 @@
 # Contributors:
 #    Composiv.ai, Eteration A.S. - initial API and implementation
 #
-#
-cmake_minimum_required(VERSION 3.0.2)
-project(muto_composer)
 
-find_package(catkin REQUIRED COMPONENTS
-ackermann_msgs
-geometry_msgs
-nav_msgs
-roscpp
-rospy
-roslaunch
-sensor_msgs
-std_msgs
-muto_msgs
-muto_core
-)
 
-catkin_python_setup()
+import subprocess
+from rclpy.node import Node
 
-catkin_package()
+
+class Introspector(Node):
+    def __init__(self):
+        super().__init__('introspector')
+
+    def kill(self, name, pid):
+        print(f'Killing {name} with PID: {pid}')
+        try:
+            subprocess.run(['kill', str(pid)])
+        except Exception as e:
+            print(f'Kill was not successful for {name}. Exception msg: {e}')

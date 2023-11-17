@@ -1,6 +1,5 @@
-#!/usr/bin/env python
 #
-#  Copyright (c) 2022 Composiv.ai, Eteration A.S. and others
+#  Copyright (c) 2023 Composiv.ai, Eteration A.S. and others
 #
 # All rights reserved. This program and the accompanying materials
 # are made available under the terms of the Eclipse Public License v2.0
@@ -15,24 +14,18 @@
 #    Composiv.ai, Eteration A.S. - initial API and implementation
 #
 #
-from composer.pipeline import Pipeline
-class Router(object):
 
+class Router():
     def __init__(self, device, pipelines):
         self.device = device
         self.pipelines = pipelines
 
-    def route(self,action,payload):
-        print("Compose route:", action, payload)
-        if 'register' == action:
-            self.device.register(payload)
-        if self.pipelines.get(action) is not None :
-            self.device.bootstrap() # reobtain current stack from twin
-            currentStack = self.device.currentStack
+    def route(self, action, payload):
+        print(f"Compose route: {action, ' ', payload}")
+        if self.pipelines.get(action) is not None:
+            self.device.bootstrap()
+            current_stack = self.device.current_stack
             manifest = {}
-            if currentStack :
-                
-                manifest = currentStack.manifest
+            if current_stack:
+                manifest = current_stack.manifest
             self.pipelines[action].execute(action, manifest, payload)
-
-
