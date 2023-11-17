@@ -4,98 +4,58 @@
 # Muto Composer
 
 ## Build
-After you checkou the repository, ource your ROS environment and make sure the additional dependencies such as the eclipse paho mqtt client library is installed.
+After you checkout the repository, source your ROS environment and make sure the additional dependencies such as the eclipse paho mqtt client library is installed.
 
 ```bash
-source /opt/ro/noetic/setup.bash
-pip install paho-mqtt celery requests
+source /opt/ros/humble/setup.bash
+pip3 install paho-mqtt celery requests
 ```
 
 ## Muto Twins
 
 Muto agent requires network connectivity to the Muto Twins (ditto) and MQTT servers. The address for the muto sandbox is: 
-* The twin servers and API: http://sandbox.muto.ai
-* The mqtt server: mqtt://sandbox.muto.ai:1883
+* The twin servers and API: https://sandbox.composiv.ai/
+* The mqtt server: mqtt://sandbox.composiv.ai:1883
+
 ## Running agent
 
-The muto agent must be launched and the target device and the devices should have access to all the packages required to launch the stacks.  Fo these purposes you can either choose to run a containerizedf version of muto or launch it direct from the devices after all the packages (such as the muto learning modules) are build and installed on the AV.
+The muto agent must be launched and the target device and the devices should have access to all the packages required to launch the stacks.  For these purposes you can either choose to run a containerized version of muto or launch it direct from the devices after all the packages (such as the muto learning modules) are build and installed on the AV.
 
 ```bash
-source devel/setup.bash
-roslaunch muto_agent agent.launch
+source install/setup.bash
+ros2 launch agent agent.launch
 ```
 
-where agent.launch is:
 
-```xml
-<?xml version="1.0"?>
-<launch>
-  <node pkg="muto_agent" name="muto_agent" type="muto_agent.py">
-      <rosparam  command="load" file="$(find muto_agent)/params.yaml" />
-  </node>
-</launch>
-```
-
-and params.yaml is:
-
-```yaml
-
-muto:
-  nav_topic: /nav
-  type: simulator
-  twin_url: "http://ditto:ditto@sandbox.composiv.ai"
-  mqtt:
-    host: sandbox.composiv.ai
-    port: 1883
-    keep_alive: 60
-    user: none
-    password: none
-  thing:
-    namespace: ai.composiv.sandbox.f1tenth
-    anonymous: False  # Use this for automatically generated id (uuid based)
-    #   if anonymous is True or anynoymous param is missing, name/id will be auto generated
-    name: simulator-monster-01
-```
-
-## Twins
-There are two definition types for thins on the wtin server:
-* Stack - The model os the muto adaptive software stack that can be running on an AV
-    -  Thing definition id for stack is: ai.composiv.sandbox.f1tenth:Stack:1.0.0
-* Vehicle - The device twin for the AV, where parameters, telemetry data and stack associations are managed
-    -  Thing definition id for vehicle is: ai.composiv.sandbox.f1tenth:TestCar:1.0.0
-
-
-Examples of these definitions can be sampled by sending http rest requests to the sandbox server
-http://sandbox.composiv.ai.  Muto Twin Server
-
+You can get stacks from twin server via::
 ```bash
-curl 'http://sandbox.composiv.ai/api/2/search/things?filter=eq(definition,"ai.composiv.sandbox.f1tenth:Stack:1.0.0")'
+curl 'link_to_stack_url'
 ```
-returns:
+which returns something similar to the below structure:
+
 ```json
 {
     "name": "Muto Learning Simulator with Gap Follwer",
     "context": "eteration_office",
-    "stackId": "ai.composiv.sandbox.f1tenth:composir_simulator_gf.launch",
+    "stackId": "org.eclipse.muto.sandbox:f1tenth-multiagent-gym.launch",
     "stack": [
         {
-            "thingId": "ai.composiv.sandbox.f1tenth:composiv_simulator.launch"
+            "thingId": "org.eclipse.muto.sandbox:racecar1.launch"
         }
     ],
     "node": [ 
         {
-            "name": "cass_gap_follower",
-            "pkg": "cass_gap_follower",
-            "exec": "cass_gap_follower",
+            "name": "reactive_gap_follower",
+            "pkg": "reactive_gap_follower",
+            "exec": "reactive_gap_follower",
             "param": [
-              { "from": "$(find cass_gap_follower)/params.yaml" }
+              { "from": "$(find reactive_gap_follower)/params.yaml" }
             ]
         }
     ]
 }
 ```
-
-This is a stack with a single node, "cass_gap_follower".  However, it includes another stack (with many other nodes and parameters) that it requires with a stackId reference ai.composiv.sandbox.f1tenth:composiv_simulator.launch.  The elements of the stack model resembles a [ROS launch XML](https://wiki.ros.org/roslaunch/XML), so it should be fairly straightforward to understand if you have experience with it.
+This is a stack with a single node, "cass_gap_follower".  However, it includes another stack (with many other nodes and parameters) that it requires with a stackId reference org.eclipse.muto.sandbox:f1tenth-multiagent-gym.launch. The elements of the stack model resembles a [ROS launch XML](https://wiki.ros.org/roslaunch/XML), so it should be fairly straightforward to understand if you have experience writing XML launch files
 
 ## Managing Stacks and Vehicles
 
@@ -106,10 +66,10 @@ $ curl -X PUT -H "Content-Type: application/json" -d '
 { 
     "name": "Muto Learning Simulator with Gap Follower", 
     "context": "eteration_office",
-    "stackId": "ai.composiv.sandbox.f1tenth:composir_simulator_gf.launch", 
+    "stackId": "org.eclipse.muto.sandbox:composiv_simulator_gf.launch", 
     "stack": [
         {
-            "thingId": "ai.composiv.sandbox.f1tenth:composiv_simulator.launch"
+            "thingId": "org.eclipse.muto.sandbox:composiv_simulator.launch"
         }
     ],
     "node": [ 
@@ -123,7 +83,7 @@ $ curl -X PUT -H "Content-Type: application/json" -d '
         }
     ]
 }
-' http://sandbox.composiv.ai/api/2/things/ai.composiv.sandbox.f1tenth:composiv_simulator_gf.launch
+' http://sandbox.composiv.ai/api/2/things/org.eclipse.muto.sandbox:composiv_simulator_gf.launch
 
 ```
 
@@ -131,16 +91,16 @@ $ curl -X PUT -H "Content-Type: application/json" -d '
 We can use the TWINS to directly communicating commands to the vehicle itself. The twin server supports special mqtt channels for these purposes called **twin** and **live** channels. For example the following command can be published to the sandbox MQTT server to activate a stack on a car.  Each vehicle has its dedicated **twin** and **live** channels:
 
 ```yaml
-topic: ai.composiv.sandbox.f1tenth:simulator-monster-01/stack/commands/active
+topic: org.eclipse.muto.sandbox::simulator-monster-01/stack/commands/active
 ```
 ```yaml
 payload: {
     "name": "Muto Learning Simulator with Gap Follwer",
     "context": "eteration_office",
-    "stackId": "ai.composiv.sandbox.f1tenth:composiv_simulator_gf.launch",
+    "stackId": "org.eclipse.muto.sandbox::composiv_simulator_gf.launch",
     "stack": [
         {
-            "thingId": "ai.composiv.sandbox.f1tenth:composiv_simulator.launch"
+            "thingId": "org.eclipse.muto.sandbox::composiv_simulator.launch"
         }
     ],
     "node": [ 
@@ -159,7 +119,7 @@ payload: {
 You can use any open-source mqtt client to issue these commands and monitor various muto twin messages [MQTTX](https://mqttx.app/). Another option is the [mosquitto_pub](https://mosquitto.org/man/mosquitto_pub-1.html), which is a simple MQTT version 5/3.1.1 client that will publish a single message on a topic and exit.  You can publish the message described above using the commandline:
 
 ```bash
-  mosquitto_pub -d -h sandbox.composiv.ai -p 1883  -t "ai.composiv.sandbox.f1tenth:simulator-monster-01/stack/commands/active" -m '{"name":"Composiv Learning Simulator with Gap Follwer","context":"eteration_office","stackId":"ai.composiv.sandbox.f1tenth:composiv_simulator_gf.launch","stack":[{"thingId":"ai.composiv.sandbox.f1tenth:composiv_simulator.launch"}],"node":[{"name":"cass_gap_follower","pkg":"cass_gap_follower","exec":"cass_gap_follower","param":[{"from":"$(find cass_gap_follower)/params.yaml"}]}]}'
+  mosquitto_pub -d -h sandbox.composiv.ai -p 1883  -t "org.eclipse.muto.sandbox::simulator-monster-01/stack/commands/active" -m '{"name":"Composiv Learning Simulator with Gap Follwer","context":"eteration_office","stackId":"org.eclipse.muto.sandbox::composiv_simulator_gf.launch","stack":[{"thingId":"org.eclipse.muto.sandbox::composiv_simulator.launch"}],"node":[{"name":"cass_gap_follower","pkg":"cass_gap_follower","exec":"cass_gap_follower","param":[{"from":"$(find cass_gap_follower)/params.yaml"}]}]}'
 
 ```
 
@@ -167,5 +127,8 @@ You can use any open-source mqtt client to issue these commands and monitor vari
 ## Controlling the F1Tenth Car (navigate on/off) 
 
 ```bash
-rostopic pub --once /mux std_msgs/Int32MultiArray "{layout: { dim: [], data_offset: 0}, data: [0, 0, 0, 0, 1 , 0] }"
+ros2 topic pub --once /mux std_msgs/Int32MultiArray "{layout: { dim: [], data_offset: 0}, data: [0, 0, 0, 0, 1 , 0] }"
 ```
+
+## More information
+Check out the Eclipse Muto github.io page for further reading: [Eclipse Muto](https://eclipse-muto.github.io/docs/docs/muto)
