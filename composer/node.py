@@ -15,6 +15,7 @@
 #
 #
 
+import os
 import composer.param as param
 
 
@@ -31,7 +32,8 @@ class Node(object):
         self._ros_args = manifest.get('ros_args', '')
         self._remap_args = []
         self._args = ''
-        self._namespace = manifest.get('namespace', '/')
+        muto_ns = os.getenv('MUTONS')
+        self._namespace = manifest.get('namespace', muto_ns)
         self._launch_prefix = manifest.get('launch-prefix', None)
         self._output = manifest.get('output', 'log')
         self._iff = manifest.get('if', '')
