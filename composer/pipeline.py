@@ -70,7 +70,7 @@ class Pipeline(Node):
         rclpy.spin_until_future_complete(self, future)
         if future.result() is not None:
             response = future.result()
-            if response.output.result.result_code == 1000:
+            if response.output.result.result_code != 0:
                 print(f'Step failed: {step}')
             return response
         else:

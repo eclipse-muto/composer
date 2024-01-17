@@ -20,14 +20,16 @@ import composer.param as param
 
 
 class Node(object):
-    def __init__(self, stack, manifest={}):
+    def __init__(self, stack, manifest={}, container=None):
         self.stack = stack
+        self._container = container
         self._manifest = manifest
         self._env = manifest.get('env', [])
         self._param = manifest.get('param', [])
         self._remap = manifest.get('remap', [])
         self._pkg = manifest.get('pkg', '')
         self._exec = manifest.get('exec', '')
+        self._plugin = manifest.get('plugin', '')
         self._name = manifest.get('name', '')
         self._ros_args = manifest.get('ros_args', '')
         self._remap_args = []
@@ -71,6 +73,7 @@ class Node(object):
             "remap": self._remap,
             "pkg": self._pkg,
             "exec": self._exec,
+            "plugin": self._plugin,
             "name": self._name,
             "ros_args": self._ros_args,
             "args": self._args,
@@ -113,8 +116,11 @@ class Node(object):
                 return False
             if self.exectbl != other.exectbl:
                 return False
+            if self.plugin != other.plugin:
+                return False
             if self.args != other.args:
                 return False
+
             return True
         return False
 
@@ -132,6 +138,8 @@ class Node(object):
             h = 31 * h + hash(self.namespace)
         if self.exectbl is not None:
             h = 31 * h + hash(self.exectbl)
+        if self.plugin is not None:
+            h = 31 * h + hash(self.plugin)
         # if self.args is not None:
             # h = 31 * h + hash(self.args)
         return h
@@ -191,6 +199,15 @@ class Node(object):
     @ros_args.setter
     def ros_args(self, n):
         self._ros_args = n
+
+
+    @property
+    def plugin(self):
+        return self._plugin
+
+    @plugin.setter
+    def plugin(self, n):
+        self._plugin = n
 
     @property
     def args(self):

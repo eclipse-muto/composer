@@ -46,16 +46,26 @@ class Ros2LaunchParent:
                 "The process did not terminate gracefully and was terminated forcefully.")
 
     def on_process_start(self, event, context):
+        name = event.process_name
+        if not bool(name):
+            name = event.action.node_name
         details = event.action.process_details
+        if not bool(name):
+            name = details['name']
         with self._lock:
-            self._active_nodes.append({details['name']: details['pid']})
+            self._active_nodes.append({name: details['pid']})
         print(f"Active Nodes after start: {self._active_nodes}")
 
     def on_process_exit(self, event, context):
+        name = event.process_name
+        if not bool(name):
+            name = event.action.node_name
         details = event.action.process_details
+        if not bool(name):
+            name = details['name']
         with self._lock:
             for node in self._active_nodes[:]:  # make a copy of the list
-                if node.get(details['name']) == details['pid']:
+                if node.get(name) == details['pid']:
                     self._active_nodes.remove(node)
                     break
         print(f"Active Nodes after exit: {self._active_nodes}")

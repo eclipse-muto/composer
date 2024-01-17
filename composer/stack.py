@@ -22,10 +22,14 @@ import uuid
 import rclpy
 import composer.node as node
 import composer.param as param
+import composer.composable as composable
 from composer.introspector import Introspector
 from collections import namedtuple
 from launch import LaunchDescription
 from launch_ros.actions import Node
+from launch_ros.actions import ComposableNodeContainer
+from launch_ros.descriptions import ComposableNode
+
 from rclpy.node import HIDDEN_NODE_PREFIX
 from rclpy.utilities import get_default_context
 from rclpy.impl.implementation_singleton import rclpy_implementation as _rclpy
@@ -37,6 +41,7 @@ NodeName = namedtuple('NodeName', ('name', 'namespace', 'full_name'))
 NOACTION = 'none'
 STARTACTION = 'start'
 STOPACTION = 'stop'
+LOADACTION = 'load'
 
 
 class Stack():
@@ -97,7 +102,14 @@ class Stack():
             sn = node.Node(self, nDef)
             self._node.append(sn)
 
-    def compare(self, other):
+
+        self._composable = []
+        for cDef in self.manifest.get('composable', []):
+            sn = composable.Container(self, cDef)
+            self._composable.append(sn)
+
+
+    def compare_nodes(self, other):
         nodeSet = set(self.flattenNodes([]))
         otherNodeSet = set(other.flattenNodes([]))
         common = nodeSet.intersection(otherNodeSet)
@@ -105,6 +117,14 @@ class Stack():
         added = otherNodeSet.difference(nodeSet)
         return common, difference, added
 
+    def compare_composable(self, other):
+        a = set(self.flattenComposable([]))
+        b = set(other.flattenComposable([]))
+        common = a.intersection(b)
+        difference = a.difference(b)
+        added = b.difference(a)
+        return common, difference, added
+    
     def flattenNodes(self, list):
         for n in self._node:
             list.append(n)
@@ -112,6 +132,13 @@ class Stack():
             s.flattenNodes(list)
         return list
 
+    def flattenComposable(self, list):
+        for c in self._composable:
+            list.append(c)
+        for s in self._stack:
+            s.flattenComposable(list)
+        return list
+    
     def calculate_ros_params_differences(self, current, other):
         differences = {}
         for node_i in current._node:
@@ -151,7 +178,16 @@ class Stack():
         return diff
 
     def merge(self, other):
-        common, difference, added = self.compare(other)
+        merged = Stack(self.edge_device, manifest={}, parent=None)
+        merged._name = other._name
+        merged._context = other._context
+        merged._stackId = other._stackId
+        merged._stack = []
+        merged._composable = []
+        merged._param = []
+
+        """ NODE MERGE """
+        common, difference, added = self.compare_nodes(other)
         for n in common:
             n.action = 'none'
         for n in added:
@@ -159,18 +195,25 @@ class Stack():
         for n in difference:
             n.action = 'stop'
         all = common.union(added).union(difference)
-        otherParams = {}
-        merged = Stack(self.edge_device, manifest={}, parent=None)
-        merged._name = other._name
-        merged._context = other._context
-        merged._stackId = other._stackId
-        merged._stack = []
         merged._node = all
-        merged._param = []
+
+        """ CONTAINERS MERGE """
+        common, difference, added = self.compare_composable(other)
+        for n in common:
+            n.action = 'none'
+        for n in added:
+            n.action = 'start'
+        for n in difference:
+            n.action = 'stop'
+        all = common.union(added).union(difference)
+        merged._composable = all
+
+
+        """ PARAMS MERGE """
+        otherParams = {}
         for pn, pv in otherParams.items():
             merged._param.append(param.Param(self, {"name": pn, "value": pv}))
         merged.arg = other.arg
-        merged._manifest = merged.toManifest()
         try:
             referencedStacks = self.manifest.get('stack', [])
             otherReferencedStacks = other.manifest.get('stack', [])
@@ -195,10 +238,18 @@ class Stack():
                 self.change_params_at_runtime(param_difference)
             param_difference = self.calculate_ros_params_differences(
                 other, self)
+            """
+            TODO THIS SHOULD BE DONE IN LAUNCH NOT DURING MERGE
+            """
             self.change_params_at_runtime(param_difference)
+            """ END OF TODO """
         except Exception as e:
             print(
                 f"Exception while calculating parameter difference between stacks: {e}")
+            
+        
+        """ COMPLETED MERGE"""
+        merged._manifest = merged.toManifest()
         return merged
 
     def kill_all(self, launcher):
@@ -255,6 +306,7 @@ class Stack():
                     "param": [],
                     "arg": [],
                     "stack": [],
+                    "composable": [],
                     "node": []}
         return manifest
 
@@ -268,6 +320,8 @@ class Stack():
             manifest["stack"].append(s.toShallowManifest())
         for n in self._node:
             manifest["node"].append(n.toManifest())
+        for c in self._composable:
+            manifest["composable"].append(c.toManifest())
         return manifest
 
     def launch(self, launcher):
@@ -277,6 +331,22 @@ class Stack():
         try:
             for s in self._stack:
                 s.launch(launcher)
+            for c in self._composable:
+                nodedesc = []
+                for cn in c.node:
+                    nodedesc.append(ComposableNode(
+                    package= cn.pkg,
+                    plugin= cn.plugin,
+                    name=cn.name))
+                container = ComposableNodeContainer(
+                            name= c.name,
+                            namespace= c.namespace,
+                            package= c.package,
+                            executable= c.executable,
+                            composable_node_descriptions=nodedesc,
+                )
+                launch_description.add_action(container)   
+
             for n in self._node:
                 remaps = []
                 if (n.remap != []):
