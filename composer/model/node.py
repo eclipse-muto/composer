@@ -32,6 +32,7 @@ class Node:
         self.pkg = manifest.get('pkg', '')
         self.exec = manifest.get('exec', '')
         self.plugin = manifest.get('plugin', '')
+        self.lifecycle = manifest.get('lifecycle', '')
         self.name = manifest.get('name', '')
         self.ros_args = manifest.get('ros_args', '')
         self.args = stack.resolve_expression(manifest.get('args', ''))
@@ -51,6 +52,7 @@ class Node:
             "param": [p.toManifest() for p in self.param],
             "remap": [{"from": rm[0], "to": rm[1]} for rm in self.remap_args],
             "pkg": self.pkg,
+            "lifecycle": self.lifecycle,
             "exec": self.exec,
             "plugin": self.plugin,
             "name": self.name,

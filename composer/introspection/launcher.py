@@ -17,8 +17,9 @@
 import asyncio
 import multiprocessing
 from launch import LaunchDescription, LaunchService
-from launch.actions import RegisterEventHandler
+from launch.actions import RegisterEventHandler, ExecuteProcess, TimerAction
 from launch.event_handlers import OnProcessStart, OnProcessExit
+from launch.substitutions import FindExecutable
 
 class Ros2LaunchParent:
     """
@@ -41,6 +42,22 @@ class Ros2LaunchParent:
         self._process = multiprocessing.Process(
             target=self._run_process, args=(self._stop_event, launch_description), daemon=True)
         self._process.start()
+
+    def invoke_lifecycle_cmd(self, node):
+        """
+        Allows managing the lifecycle operations of LifecycleNodes
+        """
+        ros2_exec = FindExecutable(name='ros2')
+        print(f'lifecycle node detected: {node.namespace}/{node.name}')
+        configure = ExecuteProcess(
+            cmd=[[ros2_exec, ' lifecycle set ',
+                  node.namespace, '/', node.name, ' ', 'configure']],
+            shell=True)
+        activate = TimerAction(period=1.0, actions=[ExecuteProcess(
+            cmd=[[ros2_exec, ' lifecycle set ',
+                  node.namespace, '/', node.name, ' ', 'activate']],
+            shell=True)])
+        return configure, activate
 
     def shutdown(self):
         """
@@ -83,6 +100,8 @@ class Ros2LaunchParent:
         launch_service = LaunchService(debug=False)
         launch_service.include_launch_description(launch_description)
         launch_task = loop.create_task(launch_service.run_async())
+
+        
 
         async def wait_for_stop_event():
             while not stop_event.is_set():

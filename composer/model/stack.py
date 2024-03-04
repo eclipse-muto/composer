@@ -444,7 +444,7 @@ class Stack():
                         '/' + active[0] for active in self.get_active_nodes()]
         return f'/{node_namespace}/{node_name}' not in active_nodes
 
-    def handle_composable_nodes(self, composable_nodes, launch_description):
+    def handle_composable_nodes(self, composable_nodes, launch_description, launcher):
         """Handle composable nodes during stack launching.
 
         Args:
@@ -466,7 +466,15 @@ class Stack():
                 )
                 launch_description.add_action(container)
 
-    def handle_regular_nodes(self, nodes, launch_description):
+            for cn in c.nodes:
+                if cn.lifecycle:
+                    configure, activate = launcher.invoke_lifecycle_cmd(cn)
+                    launch_description.add_action(configure)
+                    launch_description.add_action(activate)
+                        
+                        
+
+    def handle_regular_nodes(self, nodes, launch_description, launcher):
         """Handle regular nodes during stack launching.
 
         Args:
@@ -485,6 +493,12 @@ class Stack():
                     arguments=n.args.split(),
                     remappings=self.process_remaps(n.remap)
                 ))
+            
+                if n.lifecycle:
+                    configure, activate = launcher.invoke_lifecycle_cmd(n)
+                    launch_description.add_action(configure)
+                    launch_description.add_action(activate)
+    
 
     def launch(self, launcher):
         """Launch the stack.
@@ -495,8 +509,8 @@ class Stack():
         launch_description = LaunchDescription()
 
         try:
-            self.handle_composable_nodes(self.composable, launch_description)
-            self.handle_regular_nodes(self.node, launch_description)
+            self.handle_composable_nodes(self.composable, launch_description, launcher)
+            self.handle_regular_nodes(self.node, launch_description, launcher)
 
         except Exception as e:
             print(f'Stack launching ended with exception: {e}')
