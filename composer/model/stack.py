@@ -135,11 +135,14 @@ class Stack():
         Returns:
             list: The flattened list of nodes.
         """
-        for n in self.node:
-            list.append(n)
-        for s in self.stack:
-            s.flatten_nodes(list)
-        return list
+        try:
+            for n in self.node:
+                list.append(n)
+            for s in self.stack:
+                s.flatten_nodes(list)
+            return list
+        except Exception as e:
+            print(f'Exception occured in flatten_nodes: {e}')
 
     def flatten_composable(self, list):
         """Flatten the nested structure of composable nodes in the stack.
@@ -151,11 +154,14 @@ class Stack():
             list: The flattened list of composable nodes.
         """
 
-        for c in self.composable:
-            list.append(c)
-        for s in self.stack:
-            s.flatten_composable(list)
-        return list
+        try:
+            for c in self.composable:
+                list.append(c)
+            for s in self.stack:
+                s.flatten_composable(list)
+            return list
+        except Exception as e:
+            print(f'Exception occured in flatten_composable: {e}')
 
     def calculate_ros_params_differences(self, current, other):
         """Calculate differences in ROS parameters between nodes of the current stack and another stack.
@@ -466,14 +472,6 @@ class Stack():
                 )
                 launch_description.add_action(container)
 
-            for cn in c.nodes:
-                if cn.lifecycle:
-                    configure, activate = launcher.invoke_lifecycle_cmd(cn)
-                    launch_description.add_action(configure)
-                    launch_description.add_action(activate)
-                        
-                        
-
     def handle_regular_nodes(self, nodes, launch_description, launcher):
         """Handle regular nodes during stack launching.
 
@@ -494,11 +492,18 @@ class Stack():
                     remappings=self.process_remaps(n.remap)
                 ))
             
-                if n.lifecycle:
-                    configure, activate = launcher.invoke_lifecycle_cmd(n)
-                    launch_description.add_action(configure)
-                    launch_description.add_action(activate)
-    
+
+    def handle_managed_nodes(self, nodes, verb):
+        """Handle regular nodes during stack launching.
+
+        Args:
+            nodes (list): List of lifecycle nodes.
+            launch_description (object): The launch description object.
+        """
+        for n in nodes:
+            if n.lifecycle:
+                verbs = n.lifecycle.get(verb, [])
+                n.change_state(verbs=verbs)
 
     def launch(self, launcher):
         """Launch the stack.
@@ -516,6 +521,9 @@ class Stack():
             print(f'Stack launching ended with exception: {e}')
 
         launcher.start(launch_description)
+        all_nodes = self.node + [cn for c in self.composable for cn in c.nodes]
+        self.handle_managed_nodes(all_nodes, verb='start')
+
 
     def apply(self, launcher):
         """Apply the stack.

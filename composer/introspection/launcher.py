@@ -43,22 +43,6 @@ class Ros2LaunchParent:
             target=self._run_process, args=(self._stop_event, launch_description), daemon=True)
         self._process.start()
 
-    def invoke_lifecycle_cmd(self, node):
-        """
-        Allows managing the lifecycle operations of LifecycleNodes
-        """
-        ros2_exec = FindExecutable(name='ros2')
-        print(f'lifecycle node detected: {node.namespace}/{node.name}')
-        configure = ExecuteProcess(
-            cmd=[[ros2_exec, ' lifecycle set ',
-                  node.namespace, '/', node.name, ' ', 'configure']],
-            shell=True)
-        activate = TimerAction(period=1.0, actions=[ExecuteProcess(
-            cmd=[[ros2_exec, ' lifecycle set ',
-                  node.namespace, '/', node.name, ' ', 'activate']],
-            shell=True)])
-        return configure, activate
-
     def shutdown(self):
         """
         Signals the launch process to shut down and waits for it to terminate.
