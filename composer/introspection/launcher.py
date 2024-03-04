@@ -17,8 +17,9 @@
 import asyncio
 import multiprocessing
 from launch import LaunchDescription, LaunchService
-from launch.actions import RegisterEventHandler
+from launch.actions import RegisterEventHandler, ExecuteProcess, TimerAction
 from launch.event_handlers import OnProcessStart, OnProcessExit
+from launch.substitutions import FindExecutable
 
 class Ros2LaunchParent:
     """
@@ -83,6 +84,8 @@ class Ros2LaunchParent:
         launch_service = LaunchService(debug=False)
         launch_service.include_launch_description(launch_description)
         launch_task = loop.create_task(launch_service.run_async())
+
+        
 
         async def wait_for_stop_event():
             while not stop_event.is_set():
