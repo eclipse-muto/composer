@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2023 Composiv.ai, Eteration A.S. and others
+#  Copyright (c) 2024 Composiv.ai, Eteration A.S. and others
 #
 # All rights reserved. This program and the accompanying materials
 # are made available under the terms of the Eclipse Public License v2.0
@@ -49,7 +49,7 @@ class Twin():
             print("No stack to set")
             return
         try:
-            deftn = stack._manifest
+            deftn = stack.manifest
             stack_id = deftn.get('stackId', None)
             headers = {'Content-type': 'application/json'}
 

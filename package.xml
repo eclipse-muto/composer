@@ -24,6 +24,7 @@
   <depend>ros2launch</depend>
   <depend>muto_msgs</depend>
   <depend>python-paho-mqtt-pip</depend>
+  <depend>muto_msgs</depend>
 
   <export>
     <build_type>ament_python</build_type>
