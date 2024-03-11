@@ -95,7 +95,7 @@ class MutoComposer(Node):
         :param msg: The MutoAction message containing the stack action and payload.
         """
         if msg:
-            stack = json.loads(msg.payload)
+            stack = json.loads(msg.payload)["value"]
             self.router.route(msg.method, stack)
 
 def main(args=None):
