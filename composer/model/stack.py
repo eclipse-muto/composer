@@ -25,7 +25,7 @@ import composer.model.composable as composable
 import rclpy
 from composer.introspection.introspector import Introspector
 from launch import LaunchDescription
-from launch_ros.actions import Node
+from launch_ros.actions import Node, LoadComposableNodes
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
 from ament_index_python.packages import get_package_share_directory
@@ -119,13 +119,19 @@ class Stack():
         Returns:
             tuple: A tuple containing sets of common, different, and added composable nodes.
         """
-        a = set(self.flatten_composable([]))
-        b = set(other.flatten_composable([]))
-        common = a.intersection(b)
-        difference = a.difference(b)
-        added = b.difference(a)
-        return common, difference, added
-
+        current_composables = {f"{c.namespace}/{c.name}": c for c in self.flatten_composable([])}
+        other_composables = {f"{c.namespace}/{c.name}": c for c in other.flatten_composable([])}
+        
+        common_keys = current_composables.keys() & other_composables.keys()
+        added_keys = other_composables.keys() - current_composables.keys()
+        removed_keys = current_composables.keys() - other_composables.keys()
+        
+        common = [current_composables[key] for key in common_keys]
+        added = [other_composables[key] for key in added_keys]
+        removed = [current_composables[key] for key in removed_keys]
+    
+        return common, added, removed
+    
     def flatten_nodes(self, list):
         """Flatten the nested structure of nodes in the stack.
 
@@ -256,23 +262,57 @@ class Stack():
         merged.node = common.union(added).union(difference)
 
     def _merge_composables(self, merged, other):
-        common_composables, different_composables, added_composables = self.compare_composable(
-            other)
+        merged.composable = []
 
-        for container in common_composables:
-            for node in container.nodes:
-                node.action = NOACTION
+        current_containers = {(c.namespace, c.name): c for c in self.composable}
+        other_containers = {(c.namespace, c.name): c for c in other.composable}
 
-        for container in added_composables:
-            for node in container.nodes:
+        # Process added and removed containers
+        for key, container in other_containers.items():
+            if key not in current_containers:
+                # Mark all nodes within new containers as STARTACTION
+                for node in container.nodes:
+                    node.action = STARTACTION
+                merged.composable.append(container)
+            else:
+                # For existing containers, compare nodes within and mark actions
+                current_container = current_containers[key]
+                self.compare_and_mark_nodes(current_container, container, merged)
+
+        for key, container in current_containers.items():
+            if key not in other_containers:
+                # Mark all nodes within removed containers as STOPACTION
+                for node in container.nodes:
+                    node.action = STOPACTION
+                merged.composable.append(container)
+
+        return merged
+    
+    def compare_and_mark_nodes(self, current_container, other_container, merged):
+        current_nodes = {(n.namespace, n.name): n for n in current_container.nodes}
+        other_nodes = {(n.namespace, n.name): n for n in other_container.nodes}
+
+        for key, node in other_nodes.items():
+            if key not in current_nodes:
                 node.action = STARTACTION
+            else:
+                node.action = NOACTION 
 
-        for container in different_composables:
-            for node in container.nodes:
+        for key, node in current_nodes.items():
+            if key not in other_nodes:
                 node.action = STOPACTION
+            else:
 
-        merged.composable = common_composables.union(
-            added_composables).union(different_composables)
+                if node.action != STARTACTION:
+                    node.action = NOACTION
+
+        # Add processed nodes back into their respective containers
+        processed_container = other_container if other_container in merged.composable else current_container
+        processed_container.nodes = list(current_nodes.values()) + [n for n in other_nodes.values() if n.action == STARTACTION]
+        if processed_container not in merged.composable:
+            merged.composable.append(processed_container)
+
+
 
     def _merge_params(self, merged, other):
         other_params = {param.name: param.value for param in other.param}
@@ -380,7 +420,7 @@ class Stack():
 
     def change_params_at_runtime(self, param_differences):
         """Change parameters at runtime based on differences.
-
+        ### TODO: replace with set param service call
         Args:
             param_differences (dict): Dictionary containing parameter differences.
         """
@@ -420,7 +460,7 @@ class Stack():
         for n in self.node:
             manifest["node"].append(n.toManifest())
         for c in self.composable:
-            manifest["composable"].append(c.to_manifest())
+            manifest["composable"].append(c.toManifest())
         return manifest
 
     def process_remaps(self, remaps_config):
@@ -434,32 +474,62 @@ class Stack():
         """
         return [(rmp['from'], rmp['to']) for rmp in remaps_config] if remaps_config else []
 
-    def should_node_run(self, node_name, node_namespace):
+    def should_node_run(self, node):
         """Check if a node should run. 
         This method clears the situation where a 
-        node has NOACTION but it isn't running (Happens at when Muto first starts running) 
+        node has NOACTION but it isn't running
+        NOACTION is meant to keep the common processes alive when switching stacks
 
         Args:
-            node_name (str): Name of the node.
-            node_namespace (str): Namespace of the node.
+            node (object): The node object.
 
         Returns:
             bool: True if the node should run, False otherwise.
         """
         active_nodes = [(active[1] if active[1] != '/' else '') +
                         '/' + active[0] for active in self.get_active_nodes()]
-        return f'/{node_namespace}/{node_name}' not in active_nodes
+        
+        for i in active_nodes:
+            print("ACTIVE NODES: ", i)
+        
+        should_node_run = f'/{node.namespace}/{node.name}' not in active_nodes 
+        print(f'/{node.namespace}/{node.name} should run: {should_node_run}')
+        return should_node_run
 
-    def handle_composable_nodes(self, composable_nodes, launch_description, launcher):
+    def load_common_composables(self, container, launch_description: LaunchDescription):
+        """If there are common containers in stack composables, load them onto the existing container
+        Args: 
+            container (object): The container object
+        """
+        node_desc = []
+        for cn in container.nodes:
+            if cn.action == LOADACTION:
+                print(f"LOADING {cn.namespace}/{cn.name}")
+                node_desc.append(ComposableNode(
+                    package=cn.pkg,
+                    name=cn.name,
+                    namespace=cn.namespace,
+                    plugin=cn.plugin
+                ))
+        print(f'Node DESC: {node_desc}')
+
+        if node_desc:
+            load_action = LoadComposableNodes(
+                target_container=f'{container.namespace}/{container.name}',
+                composable_node_descriptions=[node_desc],
+            )
+            launch_description.add_action(load_action)
+
+    def handle_composable_nodes(self, composable_containers, launch_description, launcher):
         """Handle composable nodes during stack launching.
 
         Args:
-            composable_nodes (list): List of composable nodes.
+            composable_containers (list): List of composable nodes.
             launch_description (object): The launch description object.
         """
-        for c in composable_nodes:
-            node_desc = [ComposableNode(package=cn.pkg, plugin=cn.plugin, name=cn.name, namespace= cn.namespace, parameters=cn.ros_params, remappings=self.process_remaps(cn.remap))
-                         for cn in c.nodes if cn.action == STARTACTION or (cn.action == NOACTION and self.should_node_run(cn.name, cn.namespace))]
+        for c in composable_containers:
+            node_desc = [ComposableNode(package=cn.pkg, plugin=cn.plugin, name=cn.name, namespace=cn.namespace, parameters=cn.ros_params, remappings=self.process_remaps(cn.remap))
+                         for cn in c.nodes if cn.action == STARTACTION or (cn.action == NOACTION and self.should_node_run(cn))]
 
             if node_desc:  # If node_desc is not empty
                 container = ComposableNodeContainer(
@@ -472,6 +542,8 @@ class Stack():
                 )
                 launch_description.add_action(container)
 
+            # self.load_common_composables(c, launch_description)
+
     def handle_regular_nodes(self, nodes, launch_description, launcher):
         """Handle regular nodes during stack launching.
 
@@ -480,7 +552,7 @@ class Stack():
             launch_description (object): The launch description object.
         """
         for n in nodes:
-            if n.action == STARTACTION or (n.action == NOACTION and self.should_node_run(n.name, n.namespace)):
+            if n.action == STARTACTION:
                 launch_description.add_action(Node(
                     package=n.pkg,
                     executable=n.exec,
@@ -491,7 +563,6 @@ class Stack():
                     arguments=n.args.split(),
                     remappings=self.process_remaps(n.remap)
                 ))
-            
 
     def handle_managed_nodes(self, nodes, verb):
         """Handle regular nodes during stack launching.
@@ -514,7 +585,8 @@ class Stack():
         launch_description = LaunchDescription()
 
         try:
-            self.handle_composable_nodes(self.composable, launch_description, launcher)
+            self.handle_composable_nodes(
+                self.composable, launch_description, launcher)
             self.handle_regular_nodes(self.node, launch_description, launcher)
 
         except Exception as e:
@@ -522,8 +594,9 @@ class Stack():
 
         launcher.start(launch_description)
         all_nodes = self.node + [cn for c in self.composable for cn in c.nodes]
-        self.handle_managed_nodes(all_nodes, verb='start')
 
+        # After nodes are launched, take care of managed node actions
+        self.handle_managed_nodes(all_nodes, verb='start')  
 
     def apply(self, launcher):
         """Apply the stack.
@@ -531,7 +604,7 @@ class Stack():
         Args:
             launcher (object): The launcher object.
         """
-
+        self.kill_diff(launcher, self)
         self.launch(launcher)
 
     def resolve_expression(self, value=""):
@@ -605,3 +678,4 @@ class Stack():
             self.arg[name] = p
 
         return result
+
