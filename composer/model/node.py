@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2023 Composiv.ai, Eteration A.S. and others
+#  Copyright (c) 2024 Composiv.ai, Eteration A.S. and others
 #
 # All rights reserved. This program and the accompanying materials
 # are made available under the terms of the Eclipse Public License v2.0
@@ -22,7 +22,7 @@ from lifecycle_msgs.srv import GetState, GetAvailableTransitions, GetAvailableSt
 import rclpy
 
 class Node:
-    def __init__(self, stack, manifest=None, container=None):
+    def __init__(self, stack, manifest={}, container=None):
         if manifest is None:
             manifest = {}
 
@@ -44,7 +44,7 @@ class Node:
         self.output = manifest.get('output', 'both')
         self.iff = manifest.get('if', '')
         self.unless = manifest.get('unless', '')
-        self.action = manifest.get('action', None)
+        self.action = manifest.get('action', '')
         self.ros_params = [{key: value} for p in self.param for key, value in p.value.items()]
         self.remap_args = [(stack.resolve_expression(rm['from']), stack.resolve_expression(rm['to'])) for rm in self.remap]
 
