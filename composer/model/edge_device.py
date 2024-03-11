@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2023 Composiv.ai, Eteration A.S. and others
+#  Copyright (c) 2024 Composiv.ai, Eteration A.S. and others
 #
 # All rights reserved. This program and the accompanying materials
 # are made available under the terms of the Eclipse Public License v2.0
@@ -69,8 +69,6 @@ class EdgeDevice:
 
     def apply(self, current=None):
         try:
-            if self.current_stack:
-                self.current_stack.kill_diff(self.launcher, self.current_stack)
             self._update_current_stack(current, ACTIVE)
             self.current_stack.apply(self.launcher)
         except Exception as e:

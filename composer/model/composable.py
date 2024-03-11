@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2023 Composiv.ai, Eteration A.S. and others
+#  Copyright (c) 2024 Composiv.ai, Eteration A.S. and others
 #
 # All rights reserved. This program and the accompanying materials
 # are made available under the terms of the Eclipse Public License v2.0
@@ -28,12 +28,13 @@ class Container:
         self.package = manifest.get('package', '')
         self.executable = manifest.get('executable', '')
         self.name = manifest.get('name', '')
-        self.namespace = manifest.get('namespace', os.getenv('MUTONS'))
+        self.namespace = manifest.get('namespace', os.getenv('MUTONS', default=''))
         self.output = manifest.get('output', 'screen')
         self.nodes = [node.Node(stack, nDef, self) for nDef in manifest.get('node', [])]
         self.remap = manifest.get('remap', [])
+        self.action = manifest.get('action', '')
 
-    def to_manifest(self):
+    def toManifest(self):
         return {
             "package": self.package,
             "executable": self.executable,
@@ -41,7 +42,8 @@ class Container:
             "namespace": self.namespace,
             "node": [n.toManifest() for n in self.nodes],
             "output": self.output,
-            "remap": self.remap
+            "remap": self.remap,
+            "action": self.action
         }
 
     def resolve_namespace(self):
@@ -55,11 +57,9 @@ class Container:
         return (self.package == other.package and
                 self.name == other.name and
                 self.namespace == other.namespace and
-                self.executable == other.executable and
-                len(self.nodes) == len(other.nodes) and
-                all(n == on for n, on in zip(self.nodes, other.nodes)))
+                self.executable == other.executable)
+                
 
     def __hash__(self):
-        node_hash = sum(hash(n) for n in self.nodes)
-        return hash((self.package, self.name, self.namespace, self.executable, node_hash))
+        return hash((self.package, self.name, self.namespace, self.executable))
 
