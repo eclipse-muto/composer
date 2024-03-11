@@ -95,8 +95,13 @@ class MutoComposer(Node):
         :param msg: The MutoAction message containing the stack action and payload.
         """
         if msg:
-            stack = json.loads(msg.payload)["value"]
-            self.router.route(msg.method, stack)
+            try:
+                stack = json.loads(msg.payload)["value"]
+                self.router.route(msg.method, stack)
+            except KeyError as k:
+                self.get_logger().error(f"Payload is not in the expected format: {k}")
+            except Exception as e:
+                self.get_logger().error(f"Invalid payload coming to muto composer: {e}")
 
 def main(args=None):
     rclpy.init(args=args)
