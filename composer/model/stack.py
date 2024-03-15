@@ -552,7 +552,7 @@ class Stack():
             launch_description (object): The launch description object.
         """
         for n in nodes:
-            if n.action == STARTACTION:
+            if n.action == STARTACTION or (n.action == NOACTION and self.should_node_run(n)):
                 launch_description.add_action(Node(
                     package=n.pkg,
                     executable=n.exec,
@@ -678,4 +678,3 @@ class Stack():
             self.arg[name] = p
 
         return result
-
