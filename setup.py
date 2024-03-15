@@ -7,7 +7,9 @@ package_name = 'composer'
 setup(
     name=package_name,
     version='0.0.0',
-    packages=[package_name],
+    packages=[package_name,
+              f"{package_name}.introspection",
+              f"{package_name}.model"],
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
