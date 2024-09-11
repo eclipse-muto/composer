@@ -1,35 +1,37 @@
+from setuptools import find_packages, setup
 import os
-from setuptools import setup
 from glob import glob
 
-package_name = 'composer'
+PACKAGE_NAME = 'composer'
 
 setup(
-    name=package_name,
+    name=PACKAGE_NAME,
     version='0.0.0',
-    packages=[package_name,
-              f"{package_name}.introspection",
-              f"{package_name}.model"],
+    packages=find_packages(exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages',
-            ['resource/' + package_name]),
-        ('share/' + package_name, ['package.xml']),
-        (os.path.join("share", package_name, "launch"), glob("launch/*.launch.py")),
-        (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
-        (os.path.join("share", package_name, "log"), glob("log/*.log")),
+            ['resource/' + PACKAGE_NAME]),
+        ('share/' + PACKAGE_NAME, ['package.xml']),
+        (os.path.join("share", PACKAGE_NAME, "config"), glob("config/*.yaml")),
+        (os.path.join("share", PACKAGE_NAME, "launch"), glob("launch/*.yaml")),
     ],
-    install_requires=['setuptools'],
+    install_requires=['docker', 'setuptools'],
     zip_safe=True,
-    maintainer='Composiv',
+    maintainer='composiv.ai',
     maintainer_email='info@composiv.ai',
-    description="Eclipse Muto's Composer component that is responsible for the lifecycle of ROS nodes",
-    license='EPL',
-    tests_require=['pytest'],
+    description='Composer provides orchestration utilites for ROS2 environment',
+    license='Eclipse Public License',
+    tests_require=['unittest'],
+    test_suite='test',
     entry_points={
         'console_scripts': [
             'muto_composer = composer.muto_composer:main',
             'compose_plugin = composer.compose_plugin:main',
+            'containerize_plugin = composer.containerize_plugin:main',
+            'provision_plugin = composer.provision_plugin:main',
+            'native_plugin = composer.native_plugin:main',
             'launch_plugin = composer.launch_plugin:main',
+            'introspection_plugin = composer.introspection_plugin:main'
         ],
     },
 )

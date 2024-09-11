@@ -4,28 +4,30 @@ pipelines:
       - sequence:
         - service: muto_compose
           plugin: ComposePlugin
+        - service: muto_native
+          plugin: NativePlugin
         - service: muto_start_stack
-          plugin: ComposePlugin
+          plugin: LaunchPlugin
     compensation:
       - service: muto_kill_stack
-        plugin: ComposePlugin   
+        plugin: LaunchPlugin   
   - name:  kill
     pipeline:
       - sequence:
         - service: muto_compose
           plugin: ComposePlugin
         - service: muto_kill_stack
-          plugin: ComposePlugin
+          plugin: LaunchPlugin
     compensation:
       - service: muto_kill_stack
-        plugin: ComposePlugin 
+        plugin: LaunchPlugin 
   - name:  apply
     pipeline:
       - sequence:
         - service: muto_compose
           plugin: ComposePlugin
         - service: muto_apply_stack
-          plugin: ComposePlugin
+          plugin: LaunchPlugin
     compensation:
       - service: muto_kill_stack
-        plugin: ComposePlugin
+        plugin: LaunchPlugin

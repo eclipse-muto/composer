@@ -1,121 +1,219 @@
-#
-#  Copyright (c) 2024 Composiv.ai, Eteration A.S. and others
-#
-# All rights reserved. This program and the accompanying materials
-# are made available under the terms of the Eclipse Public License v2.0
-# and Eclipse Distribution License v1.0 which accompany this distribution.
-#
-# The Eclipse Public License is available at
-#    http://www.eclipse.org/legal/epl-v10.html
-# and the Eclipse Distribution License is available at
-#   http://www.eclipse.org/org/documents/edl-v10.php.
-#
-# Contributors:
-#    Composiv.ai, Eteration A.S. - initial API and implementation
-#
-
+import os
 import json
-import rclpy
-from std_msgs.msg import String
-from muto_msgs.srv import ComposePlugin
-from muto_msgs.msg import PluginResponse, PlanManifest
+import asyncio
+from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
-import composer.twin as twin
-import composer.model.edge_device as edge
+import rclpy
+from muto_msgs.msg import StackManifest, LocalMode, RepoMode
+from muto_msgs.srv import LaunchPlugin, CoreTwin
+from composer.launcher import Ros2LaunchParent
+import ros2launch.api as api
+from launch import LaunchService
+import subprocess
+
+LAUNCH_PLUGIN_NODE_NAME = "launch_plugin"
+
 
 class MutoDefaultLaunchPlugin(Node):
-    """
-    A default launch plugin for handling stack operations like apply, kill, and start within the Muto system.
-    """
-    
     def __init__(self):
-        super().__init__("launch_plugin")
-        self._init_parameters()
-        self._init_services()
-        self._bootstrap()
+        super().__init__(LAUNCH_PLUGIN_NODE_NAME)
+        self.start_srv = self.create_service(
+            LaunchPlugin, "muto_start_stack", self.handle_start
+        )
 
-    def _init_parameters(self):
-        """Declare and retrieve node parameters."""
-        params = {
-            "name": "example-01",
-            "namespace": "org.eclipse.muto.sandbox",
-            "stack_topic": "stack",
-            "twin_topic": "twin",
-            "anonymous": False,
-            "twin_url": "http://ditto:ditto@sandbox.composiv.ai"
-        }
-        for param, default in params.items():
-            self.declare_parameter(param, default)
-        self.muto = {param: self.get_parameter(param).value for param in params}
-        self.twin_topic = self.muto['twin_topic']
-        self.stack_topic = self.muto['stack_topic']
+        self.stop_srv = self.create_service(
+            LaunchPlugin, "muto_kill_stack", self.handle_kill
+        )
 
-    def _init_services(self):
-        """Initializes services for apply, kill, and start stack operations."""
-        self.create_service(ComposePlugin, "muto_apply_stack", self.handle_apply)
-        self.create_service(ComposePlugin, "muto_kill_stack", self.handle_kill)
-        self.create_service(ComposePlugin, "muto_start_stack", self.handle_start)
+        self.apply_srv = self.create_service(
+            LaunchPlugin, "muto_apply_stack", self.handle_apply
+        )
 
-    def _bootstrap(self):
-        """Bootstraps the twin and edge device components."""
-        self.twin = twin.Twin(node='MutoLaunchPlugin', config=self.muto, publisher=None)
-        self.device = edge.EdgeDevice(twin=self.twin)
+        self.create_subscription(
+            StackManifest, "composed_stack", self.handle_composed_stack, 10
+        )
 
-    def handle_apply(self, req, res):
-        """Handles requests to apply changes to a stack."""
-        return self._handle_stack_operation(req, res, self.device.apply)
+        self.set_stack_cli = self.create_client(CoreTwin, "core_twin/set_current_stack")
 
-    def handle_kill(self, req, res):
-        """Handles requests to kill a stack."""
-        return self._handle_stack_operation(req, res, self.device.kill)
+        self.create_subscription(
+            LocalMode, "local_launch", self.handle_local_launch, 10
+        )
+        self.create_subscription(RepoMode, "repo_launch", self.handle_repo_launch, 10)
+        self.launcher_name = None
 
-    def handle_start(self, req, res):
-        """Handles requests to start a stack."""
-        return self._handle_stack_operation(req, res, self.device.activate)
+        self.current_stack = None
+        self.launcher_path = None
+        self.ws_full_path = None
+        self.launcher_full_path = None
+        self.launch_arguments = None
+        self.launch_description = None
+        self.launch_service: LaunchService | None = None
+        self.launcher = Ros2LaunchParent(self.launch_arguments)
 
-    def _handle_stack_operation(self, req, res, operation_method):
+        self.async_loop = asyncio.get_event_loop()
+        self.timer = self.create_timer(
+            0.1, self.run_async_loop, callback_group=ReentrantCallbackGroup()
+        )
+
+    def run_async_loop(self):
+        """Periodically step through the asyncio event loop."""
+        self.async_loop.stop()
+        self.async_loop.run_forever()
+
+    def handle_composed_stack(self, stack_msg: StackManifest):
+        try:
+            self.current_stack = stack_msg
+            args = json.loads(self.current_stack.args)
+            self.launch_arguments = [
+                f"{str(key)}:={str(value)}" for key, value in args.items()
+            ]
+        except Exception as e:
+            self.get_logger().info(f"Exception while parsing the arguments: {e}")
+
+    def handle_local_launch(self, local_msg: LocalMode):
+        try:
+            self.ws_full_path = local_msg.ws_full_path
+            self.launcher_path = local_msg.launcher_path_relative_to_ws
+            self.launcher_full_path = os.path.join(
+                self.ws_full_path, self.launcher_path
+            )
+            if not api.is_launch_file(self.launcher_full_path):
+                raise Exception("Provided file is not a launch file")
+        except Exception as e:
+            self.get_logger().info(f"Error during local launch: {e}")
+
+    def source_workspaces(self):
+        """Source the given workspaces within muto session and update the environment."""
+        sources = json.loads(self.current_stack.source)
+
+        for key, val in sources.items():
+            print(f"Sourcing: {key} | {val}")
+            command = f'bash -c "source {val} && env"'
+            proc = subprocess.Popen(
+                command, stdout=subprocess.PIPE, shell=True, executable="/bin/bash"
+            )
+            for line in proc.stdout:
+                line = line.decode("utf-8").strip()
+                key, _, value = line.partition("=")
+                if key and value:
+                    os.environ[key] = value
+            proc.communicate()
+
+    def handle_repo_launch(self, repo_msg: RepoMode):
+        self.launcher_path = repo_msg.launch_file_name
+
+    def handle_start(self, request, response):
+        try:
+            if request.start:
+                if self.current_stack.native.native_mode == "local":
+                    os.chdir(self.ws_full_path)
+                    for i in self.launch_arguments:
+                        self.get_logger().info(f"Argument: {i}")
+                    self.source_workspaces()
+                    if self.launcher_full_path:
+                        task = self.async_loop.create_task(
+                            self.launcher.launch_a_launch_file(
+                                launch_file_path=self.launcher_full_path,
+                                launch_file_arguments=self.launch_arguments,
+                            )
+                        )
+
+                        task.add_done_callback(self.on_launch_done)
+                elif self.current_stack.native.native_mode == "repo":
+                    os.chdir(
+                        os.path.join(os.path.expanduser("~"), "muto_workspaces")
+                    )  # Go to ws path
+                    self.get_logger().info(f"current working directory: {os.getcwd()}")
+                    self.get_logger().info(f"launcher path: {self.launcher_path}")
+                    self.build_workspace()
+                    self.source_workspaces()
+                    task = self.async_loop.create_task(
+                        self.launcher.launch_a_launch_file(
+                            launch_file_path=self.launcher_path,
+                            launch_file_arguments=self.launch_arguments,
+                        )
+                    )
+                response.success = True
+                response.err_msg = ""
+
+        except Exception as e:
+            self.get_logger().warn(f"Exception occurred: {e}")
+            response.err_msg = str(e)
+            response.success = False
+        return response
+
+    def on_launch_done(self, future):
+        try:
+            self.launch_description, self.launch_service = future.result()
+            self.get_logger().info("Launch completed successfully!")
+        except Exception as e:
+            self.get_logger().warn(f"Launch failed: {e}")
+
+    def build_workspace(self):
+        subprocess.run(
+            [
+                "colcon",
+                "build",
+                "--symlink-install",
+                "--cmake-args",
+                "-DCMAKE_BUILD_TYPE=Release",
+            ],
+            check=True,
+        )
+
+    def handle_kill(self, request, response):
+        try:
+            if request.start:
+                if self.current_stack:
+                    req = CoreTwin.Request()
+                    stack_id = self.current_stack.stack_id
+                    req.input = stack_id
+                    future = self.set_stack_cli.call_async(req)
+                    future.add_done_callback(self.set_stack_done_callback)
+                    self.launcher.kill()
+                    response.success = True
+                    response.err_msg = ""
+                else:
+                    self.get_logger().error("No composed stack. Aborting")
+            return response
+        except Exception as e:
+            print(f"Exception occurred: {e}")
+            response.success = False
+            response.err_msg = f"{e}"
+
+    def handle_apply(self, request, response):
+        if request.start:
+            self.get_logger().info("Handling apply")
+        response.err_msg = ""
+        response.success = True
+        return response
+
+    def set_stack_done_callback(self, future):
         """
-        Handles stack operations by performing the given operation method.
+        Callback function for the future object.
+
+        This callback function is executed when the service call is completed.
+        It retrieves the result from the Future object and routes the action that comes from agent
 
         Args:
-            req: The request object containing the stack information.
-            res: The response object to be populated based on the operation outcome.
-            operation_method: The method to be called for the stack operation.
-
-        Returns:
-            The response object with the operation result.
+            future: The Future object representing the service call.
         """
-        try:
-            if req.input.planned:
-                stack = json.loads(req.input.planned.stack)
-                operation_method(stack)
-                res.output = self._success_response(req.input.planned)
-            else:
-                res.output = self._error_response("Could not handle launch")
-        except Exception as e:
-            self.get_logger().error(f'Error handling stack operation: {e}')
-            res.output = self._error_response("Exception during operation")
-        return res
+        result = future.result()
+        if result:
+            self.get_logger().info("Edge device stack setting is done successfully")
+        else:
+            self.get_logger().warn(
+                "Edge Device stack setting failed. Try your request again."
+            )
 
-    def _success_response(self, planned):
-        """Creates a success response for a stack operation."""
-        return PlanManifest(
-            result=PluginResponse(result_code=0, error_message="", error_description=""),
-            planned=planned
-        )
 
-    def _error_response(self, error_message):
-        """Creates an error response for a stack operation."""
-        return PlanManifest(
-            result=PluginResponse(result_code=1000, error_message=error_message, error_description=error_message)
-        )
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = MutoDefaultLaunchPlugin()
-    rclpy.spin(node)
-    node.destroy_node()
+def main():
+    rclpy.init()
+    l = MutoDefaultLaunchPlugin()
+    rclpy.spin(l)
+    l.destroy_node()
     rclpy.shutdown()
+
 
 if __name__ == "__main__":
     main()
