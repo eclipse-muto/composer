@@ -27,11 +27,8 @@ setup(
         'console_scripts': [
             'muto_composer = composer.muto_composer:main',
             'compose_plugin = composer.compose_plugin:main',
-            'containerize_plugin = composer.containerize_plugin:main',
-            'provision_plugin = composer.provision_plugin:main',
             'native_plugin = composer.native_plugin:main',
-            'launch_plugin = composer.launch_plugin:main',
-            'introspection_plugin = composer.introspection_plugin:main'
+            'launch_plugin = composer.launch_plugin:main'
         ],
     },
 )
