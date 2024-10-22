@@ -64,7 +64,7 @@ class MutoDefaultNativePlugin(Node):
             launcher_name = self.current_stack.native.repo.launch_file_name
             launcher_path = self.find_launcher(f"{os.path.join(os.path.expanduser('~'), 'muto_workspaces')}", launcher_name)
             if launcher_path:
-                print(f"Launcher found: {launcher_path}")
+                self.get_logger().info(f"Launcher found: {launcher_path}")
             else:
                 self.get_logger().warn(f"Launcher '{launcher_name}' not found in the workspace.")
             repo_msg = RepoMode()
@@ -75,7 +75,7 @@ class MutoDefaultNativePlugin(Node):
             raise Exception(f"Error while handling repo native: {e}")
 
     def find_launcher(self, ws_path, launcher_name):
-        print("walking in: ", ws_path)
+        self.get_logger().info(f"walking in: {ws_path}")
         for root, dirs, files in os.walk(ws_path):
             if launcher_name in files:
                 return os.path.join(root, launcher_name)

@@ -1,20 +1,17 @@
 import os
-import subprocess
-import time
 import signal
-from collections import OrderedDict
-import asyncio
+import launch
 import multiprocessing
+import concurrent.futures
+import rclpy.logging
+from collections import OrderedDict
 from typing import (
     List,
     Text,
     Tuple
 )
-from launch import LaunchDescription, LaunchService
 from launch.actions import RegisterEventHandler
 from launch.event_handlers import OnProcessStart, OnProcessExit
-import launch
-import concurrent.futures
 
 
 class Ros2LaunchParent:
@@ -51,13 +48,14 @@ class Ros2LaunchParent:
         launch_file_path,
         launch_file_arguments,
         noninteractive=False,
-        debug=False
+        debug=False,
+        dry_run=False
     ):
         """
         Launch a given launch file (by path) and pass it the given launch file arguments.
         This method is non-blocking and runs the launch file asynchronously.
         """
-        print(
+        rclpy.logging.get_logger("muto_launch_parent").info(
             f"Launching file: {launch_file_path} with arguments: {launch_file_arguments}")
 
         launch_service = launch.LaunchService(
@@ -99,8 +97,9 @@ class Ros2LaunchParent:
 
         launch_service.include_launch_description(launch_description)
 
-        # Using run_async() rather than run() to make it non-blocking
-        await launch_service.run_async(shutdown_when_idle=False)
+        if not dry_run:
+            # Using run_async() rather than run() to make it non-blocking
+            await launch_service.run_async(shutdown_when_idle=False)
         return launch_description, launch_service
 
     def shutdown(self):
@@ -111,7 +110,7 @@ class Ros2LaunchParent:
         self._process.join(timeout=20.0)
         if self._process.is_alive():
             self._process.terminate()
-            print(
+            rclpy.logging.get_logger("muto_launch_parent").info(
                 "The process did not terminate gracefully and was terminated forcefully.")
 
     def kill(self):
@@ -121,20 +120,20 @@ class Ros2LaunchParent:
         """
         with self._lock:
             if not self._active_nodes:
-                print("No active nodes to kill.")
+                rclpy.logging.get_logger("muto_launch_parent").info("No active nodes to kill.")
                 return
 
             def kill_node(node):
                 for process_name, pid in node.items():
                     try:
                         os.kill(pid, signal.SIGKILL)
-                        print(
+                        rclpy.logging.get_logger("muto_launch_parent").info(
                             f"Sent SIGKILL to process {process_name} (PID {pid})")
                     except ProcessLookupError:
-                        print(
+                        rclpy.logging.get_logger("muto_launch_parent").info(
                             f"Process {process_name} (PID {pid}) already terminated.")
                     except Exception as e:
-                        print(
+                        rclpy.logging.get_logger("muto_launch_parent").info(
                             f"Failed to kill process {process_name} (PID {pid}): {e}")
 
             with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -143,11 +142,11 @@ class Ros2LaunchParent:
             self._active_nodes[:] = []
 
         if self._process:
-            print("Shutting down the launch service")
+            rclpy.logging.get_logger("muto_launch_parent").info("Shutting down the launch service")
             self._stop_event.set()
             self._process.join(timeout=10.0)
             if self._process.is_alive():
-                print("Launch service did not stop gracefully, terminating forcefully.")
+                rclpy.logging.get_logger("muto_launch_parent").warn("Launch service did not stop gracefully, terminating forcefully.")
                 self._process.terminate()
 
     def _event_handler(self, action, event, nodes_list, lock):
@@ -156,16 +155,16 @@ class Ros2LaunchParent:
         """
         with lock:
             if action == 'start':
-                print(
+                rclpy.logging.get_logger("muto_launch_parent").info(
                     f"Node started: {event.process_name} with PID {event.pid}")
                 nodes_list.append({event.process_name: event.pid})
             elif action == 'exit':
-                print(
+                rclpy.logging.get_logger("muto_launch_parent").info(
                     f"Node exited: {event.process_name} with PID {event.pid}")
                 nodes_list[:] = [node for node in nodes_list if node.get(
                     event.process_name) != event.pid]
 
-        print(f"Active nodes after {action}: {nodes_list}")
+        rclpy.logging.get_logger("muto_launch_parent").info(f"Active nodes after {action}: {nodes_list}")
         if not nodes_list and action == 'exit':
             self.shutdown()
 

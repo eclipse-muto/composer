@@ -1,4 +1,5 @@
-from composer.pipeline import Pipeline
+from composer.workflow.pipeline import Pipeline
+import rclpy.logging
 
 class Router():
     def __init__(self, pipelines):
@@ -6,11 +7,11 @@ class Router():
 
     def route(self, action):
         """Routes the action that is coming from agent"""
-        print(f"Routing action: {action}")
+        rclpy.logging.get_logger("muto_router").info(f"Routing action: {action}")
 
         pipeline: Pipeline = self.pipelines.get(action)
         if pipeline:
             pipeline.execute_pipeline()
         else:
-            print(f"No pipeline found for action: {action}")
+            rclpy.logging.get_logger("muto_router").warn(f"No pipeline found for action: {action}")
         

@@ -8,8 +8,8 @@ from muto_msgs.srv import CoreTwin
 from rclpy.node import Node
 import rclpy
 from ament_index_python.packages import get_package_share_directory
-from composer.router import Router
-from composer.pipeline import Pipeline
+from composer.workflow.router import Router
+from composer.workflow.pipeline import Pipeline
 
 
 CORE_TWIN_NODE_NAME = "core_twin"

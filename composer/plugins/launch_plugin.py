@@ -6,7 +6,7 @@ from rclpy.node import Node
 import rclpy
 from muto_msgs.msg import StackManifest, LocalMode, RepoMode
 from muto_msgs.srv import LaunchPlugin, CoreTwin
-from composer.launcher import Ros2LaunchParent
+from composer.workflow.launcher import Ros2LaunchParent
 import ros2launch.api as api
 from launch import LaunchService
 import subprocess
@@ -87,7 +87,7 @@ class MutoDefaultLaunchPlugin(Node):
         sources = json.loads(self.current_stack.source)
 
         for key, val in sources.items():
-            print(f"Sourcing: {key} | {val}")
+            self.get_logger().info(f"Sourcing: {key} | {val}")
             command = f'bash -c "source {val} && env"'
             proc = subprocess.Popen(
                 command, stdout=subprocess.PIPE, shell=True, executable="/bin/bash"
@@ -177,7 +177,7 @@ class MutoDefaultLaunchPlugin(Node):
                     self.get_logger().error("No composed stack. Aborting")
             return response
         except Exception as e:
-            print(f"Exception occurred: {e}")
+            self.get_logger().info(f"Exception occurred: {e}")
             response.success = False
             response.err_msg = f"{e}"
 
