@@ -1,7 +1,8 @@
 import os
+import subprocess
 import rclpy
 from rclpy.node import Node
-from muto_msgs.msg import StackManifest, LocalMode, RepoMode
+from muto_msgs.msg import StackManifest
 from muto_msgs.srv import NativePlugin
 from core.model.muto_archive import MutoArchive
 
@@ -15,27 +16,39 @@ class MutoDefaultNativePlugin(Node):
     def __init__(self):
         super().__init__("native_plugin")
         self.native_srv = self.create_service(
-            NativePlugin, 'muto_native', self.handle_native)
+            NativePlugin, "muto_native", self.handle_native
+        )
         self.create_subscription(
-            StackManifest, 'composed_stack', self.handle_composed_stack, 10)
-        self.local_pub = self.create_publisher(
-            LocalMode, 'local_launch', 10)
-        
-        self.repo_pub = self.create_publisher(
-            RepoMode, 'repo_launch', 10)
+            StackManifest, "composed_stack", self.handle_composed_stack, 10
+        )
         self.current_stack: StackManifest | None = None
         self.archive = None
+        self.deployment_path = "/var/tmp/muto_workspaces"
+
+    def from_git(self, repo_url, branch="main"):
+        if os.path.exists(self.deployment_path):
+            os.chdir(self.deployment_path)
+            cmd = f"cd {self.deployment_path} && git fetch origin && git checkout branch && git pull"
+        else:
+            os.mkdir(self.deployment_path)
+            cmd = f"cd {self.deployment_path} && git clone -b {branch} {repo_url}"
+
+        subprocess.run(cmd, shell=True, check=True)
+
+    def from_tar(self, tar_file_path):
+        if os.path.exists(self.deployment_path):
+            subprocess.run(f"rm -rf {self.deployment_path}", shell=True, check=True)
+
+        os.makedirs(self.deployment_path, exist_ok=True)
+        cmd = f"tar -xzf {tar_file_path} -C {self.deployment_path}"
+        subprocess.run(cmd, shell=True, check=True)
 
     def handle_native(self, request, response):
         try:
             if request.start:
-                self.get_logger().info(f"Launch Mode: {self.current_stack.mode}")
-                if self.current_stack.mode == NATIVE_MODE:
-                    self.prep_native(self.current_stack.native.native_mode)
-                elif self.current_stack.mode == CONTAINER_MODE:
-                    self.get_logger().warn("Skipping NativePlugin as the stack is in container mode")
-                else:
-                    self.get_logger().warn("No mode provided. Skipping")
+                self.from_git(repo_url=self.current_stack.url, branch=self.current_stack.branch)
+                self.find_launcher(ws_path=self.deployment_path, launcher_name=self.current_stack)
+                self.get_logger().warn("No mode provided. Skipping")
             response.err_msg = str()
             response.success = True
         except Exception as e:
@@ -47,52 +60,20 @@ class MutoDefaultNativePlugin(Node):
     def handle_composed_stack(self, stack_msg: StackManifest):
         self.current_stack = stack_msg
 
-    def prep_native(self, native_mode: str):
-        if native_mode == REPO_MODE:
-            self.handle_repo_native()
-        elif native_mode == LOCAL_MODE:
-            self.handle_local_native()
-        else:
-            self.get_logger().warn("Unknown native mode is provided")
-
-    def handle_repo_native(self):
+    def handle_git(self):
         try:
-            self.archive = MutoArchive()
-            ws_path = self.archive.download_workspace(
-                url=self.current_stack.workspace_url)
-            self.archive.decompress_into_local(ws_path)
-            launcher_name = self.current_stack.native.repo.launch_file_name
-            launcher_path = self.find_launcher(f"{os.path.join(os.path.expanduser('~'), 'muto_workspaces')}", launcher_name)
-            if launcher_path:
-                self.get_logger().info(f"Launcher found: {launcher_path}")
-            else:
-                self.get_logger().warn(f"Launcher '{launcher_name}' not found in the workspace.")
-            repo_msg = RepoMode()
-            repo_msg.launch_file_name = launcher_path
-            self.repo_pub.publish(repo_msg)
-
+            # TODO:
+            pass
         except Exception as e:
             raise Exception(f"Error while handling repo native: {e}")
 
     def find_launcher(self, ws_path, launcher_name):
         self.get_logger().info(f"walking in: {ws_path}")
+        print("aaa")
         for root, dirs, files in os.walk(ws_path):
             if launcher_name in files:
                 return os.path.join(root, launcher_name)
         return None
-
-
-    def handle_local_native(self):
-        try:
-            ws_path = self.current_stack.native.local.ws_full_path
-            os.chdir(ws_path)
-            local_msg = LocalMode()
-            local_msg.ws_full_path = ws_path
-            local_msg.launcher_path_relative_to_ws = self.current_stack.native.local.launcher_path_relative_to_ws
-            self.local_pub.publish(local_msg)
-        except Exception as e:
-            self.get_logger().info(
-                f"Error while handling local native launch: {e}")
 
 
 def main():
@@ -103,5 +84,5 @@ def main():
     rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

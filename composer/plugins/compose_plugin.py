@@ -1,6 +1,6 @@
 import json
 import rclpy
-from muto_msgs.msg import StackManifest, NativeMode, RepoMode, LocalMode
+from muto_msgs.msg import StackManifest
 from muto_msgs.srv import ComposePlugin
 from std_msgs.msg import String
 from rclpy.node import Node
@@ -38,36 +38,23 @@ class MutoDefaultComposePlugin(Node):
         """Publish the end result of the composed stack to the ROS environment"""
         try:
             if self.incoming_stack:
-                stack_msg = StackManifest()
-                stack_msg.name = self.incoming_stack.get("name", "")
-                stack_msg.stack_id = self.incoming_stack.get("stackId", "")
-                stack_msg.context = self.incoming_stack.get("context", "")
-                stack_msg.mode = self.incoming_stack.get("mode", "")
-                stack_msg.args = json.dumps(self.incoming_stack.get("args", {}))
-                stack_msg.workspace_url = self.incoming_stack.get("url", "https://")
-                native = self.incoming_stack.get("native", {})
-                stack_msg.native = NativeMode()
-                stack_msg.native.native_mode = native.get("native_mode", "")
-                stack_msg.native.repo = RepoMode()
-                stack_msg.native.repo.path_to_download_relative_to_home_dir = (
-                    native.get("repo", {}).get(
-                        "path_to_download_relative_to_home_dir", ""
-                    )
-                )
-                stack_msg.native.repo.launch_file_name = native.get("repo", {}).get(
-                    "launch_file_name", ""
-                )
-                stack_msg.native.local = LocalMode()
-                stack_msg.native.local.ws_full_path = native.get("local", {}).get(
-                    "ws_full_path", ""
-                )
-                stack_msg.native.local.launcher_path_relative_to_ws = native.get(
-                    "local", {}
-                ).get("launcher_path_relative_to_ws", "")
-                stack_msg.source = json.dumps(self.incoming_stack.get("source", {}))
+                stack_msg = self.parse_stack(self.incoming_stack)
                 self.composed_stack_publisher.publish(stack_msg)
         except Exception as e:
             raise Exception(f"Incoming stack format is not valid: {e}")
+    
+    def parse_stack(self, stack: dict) -> StackManifest:
+        """Parses the incoming stack into StackManifest msg"""
+        stack_msg = StackManifest()
+        stack_msg.name = stack.get("name")
+        stack_msg.context = stack.get("context")
+        stack_msg.stack_id = stack.get("stackId")
+        stack_msg.url = stack.get("url")
+        stack_msg.branch = stack.get("branch")
+        stack_msg.launch_description_source = stack.get("launch_description_source")
+        stack_msg.args = json.dumps(stack.get("args", {}))
+        stack_msg.source = json.dumps(stack.get("source", {}))
+        return stack_msg
 
 
 def main():

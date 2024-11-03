@@ -1,22 +1,20 @@
 import os
 import json
+import subprocess
 import asyncio
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 import rclpy
-from muto_msgs.msg import StackManifest, LocalMode, RepoMode
+from muto_msgs.msg import StackManifest
 from muto_msgs.srv import LaunchPlugin, CoreTwin
 from composer.workflow.launcher import Ros2LaunchParent
-import ros2launch.api as api
 from launch import LaunchService
-import subprocess
 
-LAUNCH_PLUGIN_NODE_NAME = "launch_plugin"
 
 
 class MutoDefaultLaunchPlugin(Node):
     def __init__(self):
-        super().__init__(LAUNCH_PLUGIN_NODE_NAME)
+        super().__init__("launch_plugin")
         self.start_srv = self.create_service(
             LaunchPlugin, "muto_start_stack", self.handle_start
         )
@@ -35,15 +33,11 @@ class MutoDefaultLaunchPlugin(Node):
 
         self.set_stack_cli = self.create_client(CoreTwin, "core_twin/set_current_stack")
 
-        self.create_subscription(
-            LocalMode, "local_launch", self.handle_local_launch, 10
-        )
-        self.create_subscription(RepoMode, "repo_launch", self.handle_repo_launch, 10)
         self.launcher_name = None
 
         self.current_stack = None
         self.launcher_path = None
-        self.ws_full_path = None
+        self.ws_full_path = "/var/tmp/muto_workspaces"
         self.launcher_full_path = None
         self.launch_arguments = None
         self.launch_description = None
@@ -70,18 +64,6 @@ class MutoDefaultLaunchPlugin(Node):
         except Exception as e:
             self.get_logger().info(f"Exception while parsing the arguments: {e}")
 
-    def handle_local_launch(self, local_msg: LocalMode):
-        try:
-            self.ws_full_path = local_msg.ws_full_path
-            self.launcher_path = local_msg.launcher_path_relative_to_ws
-            self.launcher_full_path = os.path.join(
-                self.ws_full_path, self.launcher_path
-            )
-            if not api.is_launch_file(self.launcher_full_path):
-                raise Exception("Provided file is not a launch file")
-        except Exception as e:
-            self.get_logger().info(f"Error during local launch: {e}")
-
     def source_workspaces(self):
         """Source the given workspaces within muto session and update the environment."""
         sources = json.loads(self.current_stack.source)
@@ -99,32 +81,28 @@ class MutoDefaultLaunchPlugin(Node):
                     os.environ[key] = value
             proc.communicate()
 
-    def handle_repo_launch(self, repo_msg: RepoMode):
-        self.launcher_path = repo_msg.launch_file_name
-
     def handle_start(self, request, response):
         try:
             if request.start:
-                if self.current_stack.native.native_mode == "local":
-                    os.chdir(self.ws_full_path)
-                    for i in self.launch_arguments:
-                        self.get_logger().info(f"Argument: {i}")
-                    self.source_workspaces()
-                    if self.launcher_full_path:
-                        task = self.async_loop.create_task(
-                            self.launcher.launch_a_launch_file(
-                                launch_file_path=self.launcher_full_path,
-                                launch_file_arguments=self.launch_arguments,
-                            )
+                os.chdir(self.ws_full_path)
+                for i in self.launch_arguments:
+                    self.get_logger().info(f"Argument: {i}")
+                self.source_workspaces()
+                if self.launcher_full_path:
+                    task = self.async_loop.create_task(
+                        self.launcher.launch_a_launch_file(
+                            launch_file_path=self.launcher_full_path,
+                            launch_file_arguments=self.launch_arguments,
                         )
+                    )
 
-                        task.add_done_callback(self.on_launch_done)
-                elif self.current_stack.native.native_mode == "repo":
+                    task.add_done_callback(self.on_launch_done)
+                elif True:
                     os.chdir(
-                        os.path.join(os.path.expanduser("~"), "muto_workspaces")
+                        os.path.join("/var/tmp", "muto_workspaces")
                     )  # Go to ws path
-                    self.get_logger().info(f"current working directory: {os.getcwd()}")
-                    self.get_logger().info(f"launcher path: {self.launcher_path}")
+                    self.get_logger().info(f"Current working directory: {os.getcwd()}")
+                    self.get_logger().info(f"Launcher path: {self.launcher_path}")
                     self.build_workspace()
                     self.source_workspaces()
                     task = self.async_loop.create_task(
@@ -133,8 +111,8 @@ class MutoDefaultLaunchPlugin(Node):
                             launch_file_arguments=self.launch_arguments,
                         )
                     )
-                response.success = True
-                response.err_msg = ""
+                    response.success = True
+                    response.err_msg = ""
 
         except Exception as e:
             self.get_logger().warn(f"Exception occurred: {e}")
@@ -183,6 +161,7 @@ class MutoDefaultLaunchPlugin(Node):
 
     def handle_apply(self, request, response):
         if request.start:
+            # TODO:
             self.get_logger().info("Handling apply")
         response.err_msg = ""
         response.success = True
