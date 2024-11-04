@@ -9,7 +9,7 @@ from muto_msgs.msg import StackManifest
 from muto_msgs.srv import LaunchPlugin, CoreTwin
 from composer.workflow.launcher import Ros2LaunchParent
 from launch import LaunchService
-
+from composer.plugins.native_plugin import WORKSPACES_PATH
 
 
 class MutoDefaultLaunchPlugin(Node):
@@ -27,18 +27,11 @@ class MutoDefaultLaunchPlugin(Node):
             LaunchPlugin, "muto_apply_stack", self.handle_apply
         )
 
-        self.create_subscription(
-            StackManifest, "composed_stack", self.handle_composed_stack, 10
-        )
+        self.create_subscription(StackManifest, "composed_stack", self.get_stack, 10)
 
         self.set_stack_cli = self.create_client(CoreTwin, "core_twin/set_current_stack")
 
-        self.launcher_name = None
-
-        self.current_stack = None
-        self.launcher_path = None
-        self.ws_full_path = "/var/tmp/muto_workspaces"
-        self.launcher_full_path = None
+        self.current_stack: StackManifest | None = None
         self.launch_arguments = None
         self.launch_description = None
         self.launch_service: LaunchService | None = None
@@ -54,7 +47,7 @@ class MutoDefaultLaunchPlugin(Node):
         self.async_loop.stop()
         self.async_loop.run_forever()
 
-    def handle_composed_stack(self, stack_msg: StackManifest):
+    def get_stack(self, stack_msg: StackManifest):
         try:
             self.current_stack = stack_msg
             args = json.loads(self.current_stack.args)
@@ -63,6 +56,16 @@ class MutoDefaultLaunchPlugin(Node):
             ]
         except Exception as e:
             self.get_logger().info(f"Exception while parsing the arguments: {e}")
+
+    def find_launcher(self, ws_path, launcher_name) -> str | None:
+        """Finds the launcher when provided workspace path and the launch file's name"""
+        for root, dirs, files in os.walk(ws_path):
+            if launcher_name in files:
+                self.get_logger().info(f"Found LD: {root}/{launcher_name}")
+                return os.path.join(root, launcher_name)
+        self.get_logger().warn("Launcher with the provided name is not found. Aborting")
+        return None
+
 
     def source_workspaces(self):
         """Source the given workspaces within muto session and update the environment."""
@@ -81,38 +84,27 @@ class MutoDefaultLaunchPlugin(Node):
                     os.environ[key] = value
             proc.communicate()
 
+
     def handle_start(self, request, response):
         try:
             if request.start:
-                os.chdir(self.ws_full_path)
                 for i in self.launch_arguments:
                     self.get_logger().info(f"Argument: {i}")
-                self.source_workspaces()
-                if self.launcher_full_path:
-                    task = self.async_loop.create_task(
-                        self.launcher.launch_a_launch_file(
-                            launch_file_path=self.launcher_full_path,
-                            launch_file_arguments=self.launch_arguments,
-                        )
-                    )
 
-                    task.add_done_callback(self.on_launch_done)
-                elif True:
-                    os.chdir(
-                        os.path.join("/var/tmp", "muto_workspaces")
-                    )  # Go to ws path
-                    self.get_logger().info(f"Current working directory: {os.getcwd()}")
-                    self.get_logger().info(f"Launcher path: {self.launcher_path}")
-                    self.build_workspace()
-                    self.source_workspaces()
-                    task = self.async_loop.create_task(
-                        self.launcher.launch_a_launch_file(
-                            launch_file_path=self.launcher_path,
-                            launch_file_arguments=self.launch_arguments,
-                        )
+                self.source_workspaces()
+
+                task = self.async_loop.create_task(
+                    self.launcher.launch_a_launch_file(
+                        launch_file_path=self.find_launcher(
+                            WORKSPACES_PATH,
+                            self.current_stack.launch_description_source,
+                        ),
+                        launch_file_arguments=self.launch_arguments,
                     )
-                    response.success = True
-                    response.err_msg = ""
+                )
+
+                response.success = True
+                response.err_msg = ""
 
         except Exception as e:
             self.get_logger().warn(f"Exception occurred: {e}")
@@ -123,21 +115,8 @@ class MutoDefaultLaunchPlugin(Node):
     def on_launch_done(self, future):
         try:
             self.launch_description, self.launch_service = future.result()
-            self.get_logger().info("Launch completed successfully!")
         except Exception as e:
             self.get_logger().warn(f"Launch failed: {e}")
-
-    def build_workspace(self):
-        subprocess.run(
-            [
-                "colcon",
-                "build",
-                "--symlink-install",
-                "--cmake-args",
-                "-DCMAKE_BUILD_TYPE=Release",
-            ],
-            check=True,
-        )
 
     def handle_kill(self, request, response):
         try:
@@ -150,7 +129,7 @@ class MutoDefaultLaunchPlugin(Node):
                     future.add_done_callback(self.set_stack_done_callback)
                     self.launcher.kill()
                     response.success = True
-                    response.err_msg = ""
+                    response.err_msg = str("Handle kill success")
                 else:
                     self.get_logger().error("No composed stack. Aborting")
             return response

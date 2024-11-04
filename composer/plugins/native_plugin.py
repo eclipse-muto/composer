@@ -1,79 +1,111 @@
 import os
+import json
 import subprocess
+import shutil
 import rclpy
 from rclpy.node import Node
 from muto_msgs.msg import StackManifest
 from muto_msgs.srv import NativePlugin
 from core.model.muto_archive import MutoArchive
 
-LOCAL_MODE = "local"
-NATIVE_MODE = "native"
-REPO_MODE = "repo"
-CONTAINER_MODE = "container"
+WORKSPACES_PATH = os.path.join("/var", "tmp", "muto_workspaces")
 
 
 class MutoDefaultNativePlugin(Node):
+    """The plugin for setting up the workspace (pull, clone, build, install dependendices, etc.)"""
+
     def __init__(self):
         super().__init__("native_plugin")
         self.native_srv = self.create_service(
             NativePlugin, "muto_native", self.handle_native
         )
         self.create_subscription(
-            StackManifest, "composed_stack", self.handle_composed_stack, 10
+            StackManifest, "composed_stack", self.get_stack, 10
         )
+
         self.current_stack: StackManifest | None = None
-        self.archive = None
-        self.deployment_path = "/var/tmp/muto_workspaces"
+        self.deployment_path = WORKSPACES_PATH
 
-    def from_git(self, repo_url, branch="main"):
-        if os.path.exists(self.deployment_path):
-            os.chdir(self.deployment_path)
-            cmd = f"cd {self.deployment_path} && git fetch origin && git checkout branch && git pull"
+    def get_stack(self, stack_msg: StackManifest):
+        """Subscribe to the composed stack"""
+        self.current_stack = stack_msg
+
+    def from_git(self, repo_url, branch="main") -> None:
+        """
+        Clones a git repository if that repo does not exist within deployment path.
+        If the repo exists, simply updates it.
+        """
+        target_dir = os.path.join(
+            self.deployment_path, self.current_stack.name.replace(" ", "_")
+        )
+        if os.path.exists(os.path.join(target_dir, ".git")):
+            os.chdir(target_dir)
+            cmd = (
+                f"git fetch origin && git checkout {branch} && git pull origin {branch}"
+            )
         else:
-            os.mkdir(self.deployment_path)
-            cmd = f"cd {self.deployment_path} && git clone -b {branch} {repo_url}"
-
+            if os.path.exists(target_dir):
+                shutil.rmtree(target_dir)
+            os.makedirs(target_dir, exist_ok=True)
+            cmd = f"git clone -b {branch} {repo_url} {target_dir}"
         subprocess.run(cmd, shell=True, check=True)
 
     def from_tar(self, tar_file_path):
-        if os.path.exists(self.deployment_path):
-            subprocess.run(f"rm -rf {self.deployment_path}", shell=True, check=True)
+        """If the repo is a compressed file that needs to be unextracted"""
+        archive = MutoArchive()
 
-        os.makedirs(self.deployment_path, exist_ok=True)
-        cmd = f"tar -xzf {tar_file_path} -C {self.deployment_path}"
-        subprocess.run(cmd, shell=True, check=True)
+    def build_workspace(self):
+        subprocess.run(
+            [
+                "colcon",
+                "build",
+                "--symlink-install",
+                "--cmake-args",
+                "-DCMAKE_BUILD_TYPE=Release",
+            ],
+            check=True,
+        )
+
+    def install_dependencies(self):
+        subprocess.run(
+            [
+                "rosdep",
+                "update"
+            ],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "rosdep",
+                "install",
+                "--from-path",
+                ".",
+                "--ignore-src",
+                "-r",
+                "-y"
+            ],
+            check=True,
+        )
 
     def handle_native(self, request, response):
+        """Prepares the workspace"""
         try:
             if request.start:
-                self.from_git(repo_url=self.current_stack.url, branch=self.current_stack.branch)
-                self.find_launcher(ws_path=self.deployment_path, launcher_name=self.current_stack)
+                self.from_git(
+                    repo_url=self.current_stack.url, branch=self.current_stack.branch
+                )
+                self.install_dependencies()
+                self.build_workspace()
                 self.get_logger().warn("No mode provided. Skipping")
-            response.err_msg = str()
+            response.err_msg = str("Successful")
             response.success = True
         except Exception as e:
             self.get_logger().warn(f"Exception: {e}")
-            response.err_msg = str(e)
+            response.err_msg = str(f"Error: {e}")
             response.success = False
         return response
 
-    def handle_composed_stack(self, stack_msg: StackManifest):
-        self.current_stack = stack_msg
 
-    def handle_git(self):
-        try:
-            # TODO:
-            pass
-        except Exception as e:
-            raise Exception(f"Error while handling repo native: {e}")
-
-    def find_launcher(self, ws_path, launcher_name):
-        self.get_logger().info(f"walking in: {ws_path}")
-        print("aaa")
-        for root, dirs, files in os.walk(ws_path):
-            if launcher_name in files:
-                return os.path.join(root, launcher_name)
-        return None
 
 
 def main():
