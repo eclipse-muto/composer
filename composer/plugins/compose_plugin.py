@@ -46,12 +46,14 @@ class MutoDefaultComposePlugin(Node):
     def parse_stack(self, stack: dict) -> StackManifest:
         """Parses the incoming stack into StackManifest msg"""
         stack_msg = StackManifest()
-        stack_msg.name = stack.get("name")
-        stack_msg.context = stack.get("context")
-        stack_msg.stack_id = stack.get("stackId")
-        stack_msg.url = stack.get("url")
-        stack_msg.branch = stack.get("branch")
-        stack_msg.launch_description_source = stack.get("launch_description_source")
+        stack_msg.name = stack.get("name", "")
+        stack_msg.context = stack.get("context", "")
+        stack_msg.stack_id = stack.get("stackId", "")
+        stack_msg.url = stack.get("url", "")
+        stack_msg.branch = stack.get("branch", "")
+        stack_msg.launch_description_source = stack.get("launch_description_source", "")
+        stack_msg.on_start = stack.get("on_start", "")
+        stack_msg.on_kill = stack.get("on_kill", "")
         stack_msg.args = json.dumps(stack.get("args", {}))
         stack_msg.source = json.dumps(stack.get("source", {}))
         return stack_msg
