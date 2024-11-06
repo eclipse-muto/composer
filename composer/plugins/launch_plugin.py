@@ -8,10 +8,12 @@ import rclpy
 from muto_msgs.msg import StackManifest
 from muto_msgs.srv import LaunchPlugin, CoreTwin
 from composer.workflow.launcher import Ros2LaunchParent
-from launch import LaunchService
 from composer.plugins.native_plugin import WORKSPACES_PATH
+from launch import LaunchService
 
 
+
+# TODO: handle workspaces with submodules
 class MutoDefaultLaunchPlugin(Node):
     def __init__(self):
         super().__init__("launch_plugin")
@@ -68,9 +70,9 @@ class MutoDefaultLaunchPlugin(Node):
 
 
     def source_workspaces(self):
-        """Source the given workspaces within muto session and update the environment."""
+        """Source the given workspaces within muto session a nd update the environment."""
         sources = json.loads(self.current_stack.source)
-
+        os.chdir(f'{WORKSPACES_PATH}/{self.current_stack.name.replace(" ", "_")}')
         for key, val in sources.items():
             self.get_logger().info(f"Sourcing: {key} | {val}")
             command = f'bash -c "source {val} && env"'
@@ -90,7 +92,7 @@ class MutoDefaultLaunchPlugin(Node):
             if request.start:
                 for i in self.launch_arguments:
                     self.get_logger().info(f"Argument: {i}")
-
+            
                 self.source_workspaces()
 
                 task = self.async_loop.create_task(

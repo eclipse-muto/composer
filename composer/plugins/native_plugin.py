@@ -1,5 +1,4 @@
 import os
-import json
 import subprocess
 import shutil
 import rclpy
@@ -9,7 +8,9 @@ from muto_msgs.srv import NativePlugin
 from core.model.muto_archive import MutoArchive
 
 WORKSPACES_PATH = os.path.join("/var", "tmp", "muto_workspaces")
+GIT_UP_TO_DATE_MSG = "Your branch is up to date"
 
+# TODO: When the version is already up to date, don't install rosdeps and don't build, else do
 
 class MutoDefaultNativePlugin(Node):
     """The plugin for setting up the workspace (pull, clone, build, install dependendices, etc.)"""
@@ -19,9 +20,7 @@ class MutoDefaultNativePlugin(Node):
         self.native_srv = self.create_service(
             NativePlugin, "muto_native", self.handle_native
         )
-        self.create_subscription(
-            StackManifest, "composed_stack", self.get_stack, 10
-        )
+        self.create_subscription(StackManifest, "composed_stack", self.get_stack, 10)
 
         self.current_stack: StackManifest | None = None
         self.deployment_path = WORKSPACES_PATH
@@ -40,15 +39,16 @@ class MutoDefaultNativePlugin(Node):
         )
         if os.path.exists(os.path.join(target_dir, ".git")):
             os.chdir(target_dir)
-            cmd = (
-                f"git fetch origin && git checkout {branch} && git pull origin {branch}"
-            )
+            cmd = f"git fetch --recurse-submodules origin && git checkout {branch} && git pull --recurse-submodules origin {branch}"
         else:
             if os.path.exists(target_dir):
                 shutil.rmtree(target_dir)
             os.makedirs(target_dir, exist_ok=True)
-            cmd = f"git clone -b {branch} {repo_url} {target_dir}"
-        subprocess.run(cmd, shell=True, check=True)
+            cmd = f"git clone --recurse-submodules -b {branch} {repo_url} {target_dir}"
+        command = subprocess.run(cmd, shell=True, check=True, capture_output=True)
+        # TODO: if returncode != 0, throw exception (command.check_returncode accomplishes this)
+        self.get_logger().info(f"command stdout: {command.stdout}")
+
 
     def from_tar(self, tar_file_path):
         """If the repo is a compressed file that needs to be unextracted"""
@@ -68,22 +68,11 @@ class MutoDefaultNativePlugin(Node):
 
     def install_dependencies(self):
         subprocess.run(
-            [
-                "rosdep",
-                "update"
-            ],
+            ["rosdep", "update"],
             check=True,
         )
         subprocess.run(
-            [
-                "rosdep",
-                "install",
-                "--from-path",
-                ".",
-                "--ignore-src",
-                "-r",
-                "-y"
-            ],
+            ["rosdep", "install", "--from-path", ".", "--ignore-src", "-r", "-y"],
             check=True,
         )
 
@@ -104,8 +93,6 @@ class MutoDefaultNativePlugin(Node):
             response.err_msg = str(f"Error: {e}")
             response.success = False
         return response
-
-
 
 
 def main():
