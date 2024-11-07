@@ -12,8 +12,6 @@ from composer.plugins.native_plugin import WORKSPACES_PATH
 from launch import LaunchService
 
 
-
-# TODO: handle workspaces with submodules
 class MutoDefaultLaunchPlugin(Node):
     def __init__(self):
         super().__init__("launch_plugin")
@@ -59,15 +57,15 @@ class MutoDefaultLaunchPlugin(Node):
         except Exception as e:
             self.get_logger().info(f"Exception while parsing the arguments: {e}")
 
-    def find_launcher(self, ws_path, launcher_name) -> str | None:
-        """Finds the launcher when provided workspace path and the launch file's name"""
+    def find_file(self, ws_path, file_name) -> str | None:
+        """Helper method that finds a file when provided workspace path and the the file's name"""
+        self.get_logger().info(f"Searching for {file_name} under {ws_path}")
         for root, dirs, files in os.walk(ws_path):
-            if launcher_name in files:
-                self.get_logger().info(f"Found LD: {root}/{launcher_name}")
-                return os.path.join(root, launcher_name)
+            if file_name in files:
+                self.get_logger().info(f"Found LD: {root}/{file_name}")
+                return os.path.join(root, file_name)
         self.get_logger().warn("Launcher with the provided name is not found. Aborting")
         return None
-
 
     def source_workspaces(self):
         """Source the given workspaces within muto session a nd update the environment."""
@@ -86,24 +84,49 @@ class MutoDefaultLaunchPlugin(Node):
                     os.environ[key] = value
             proc.communicate()
 
-
     def handle_start(self, request, response):
         try:
             if request.start:
                 for i in self.launch_arguments:
                     self.get_logger().info(f"Argument: {i}")
-            
-                self.source_workspaces()
 
-                task = self.async_loop.create_task(
-                    self.launcher.launch_a_launch_file(
-                        launch_file_path=self.find_launcher(
-                            WORKSPACES_PATH,
-                            self.current_stack.launch_description_source,
-                        ),
-                        launch_file_arguments=self.launch_arguments,
+                self.source_workspaces()
+                if self.current_stack.launch_description_source:
+                    task = self.async_loop.create_task(
+                        self.launcher.launch_a_launch_file(
+                            launch_file_path=self.find_file(
+                                WORKSPACES_PATH,
+                                self.current_stack.launch_description_source,
+                            ),
+                            launch_file_arguments=self.launch_arguments,
+                        )
                     )
-                )
+                elif self.current_stack.on_start:
+                    # os.chdir(
+                    # f"{os.path.join(WORKSPACES_PATH, self.current_stack.name.replace(' ', '_'))}"
+                    # )
+                    script = self.find_file(
+                        os.path.join(
+                            WORKSPACES_PATH, self.current_stack.name.replace(" ", "_")
+                        ),
+                        self.current_stack.on_start,
+                    )
+                    self.get_logger().info(f"Script path: {script}")
+
+                    if not os.path.isfile(script):
+                        raise FileNotFoundError(f"Script not found: {script}")
+
+                    if not os.access(script, os.X_OK):
+                        os.chmod(script, 0o755)
+
+                    try:
+                        result = subprocess.run(
+                            [script], check=True, capture_output=True, text=True
+                        )
+                        self.get_logger().info(f"Start Script output: {result.stdout}")
+                    except subprocess.CalledProcessError as e:
+                        self.get_logger().error(f"Script failed with error: {e.stderr}")
+                        raise
 
                 response.success = True
                 response.err_msg = ""
@@ -129,7 +152,31 @@ class MutoDefaultLaunchPlugin(Node):
                     req.input = stack_id
                     future = self.set_stack_cli.call_async(req)
                     future.add_done_callback(self.set_stack_done_callback)
-                    self.launcher.kill()
+                    if self.current_stack.launch_description_source:
+                        self.launcher.kill()
+                    elif self.current_stack.on_kill:
+                        script = self.find_file(
+                        os.path.join(
+                            WORKSPACES_PATH, self.current_stack.name.replace(" ", "_")
+                        ),
+                        self.current_stack.on_kill,
+                        )
+                        self.get_logger().info(f"Script path: {script}")
+
+                        if not os.path.isfile(script):
+                            raise FileNotFoundError(f"Script not found: {script}")
+
+                        if not os.access(script, os.X_OK):
+                            os.chmod(script, 0o755)
+
+                        try:
+                            result = subprocess.run(
+                                [script], check=True, capture_output=True, text=True
+                            )
+                            self.get_logger().info(f"Kill script output: {result.stdout}")
+                        except subprocess.CalledProcessError as e:
+                            self.get_logger().error(f"Script failed with error: {e.stderr}")
+                            raise
                     response.success = True
                     response.err_msg = str("Handle kill success")
                 else:

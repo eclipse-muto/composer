@@ -12,6 +12,7 @@ GIT_UP_TO_DATE_MSG = "Your branch is up to date"
 
 # TODO: When the version is already up to date, don't install rosdeps and don't build, else do
 
+
 class MutoDefaultNativePlugin(Node):
     """The plugin for setting up the workspace (pull, clone, build, install dependendices, etc.)"""
 
@@ -23,7 +24,7 @@ class MutoDefaultNativePlugin(Node):
         self.create_subscription(StackManifest, "composed_stack", self.get_stack, 10)
 
         self.current_stack: StackManifest | None = None
-        self.deployment_path = WORKSPACES_PATH
+        self.is_up_to_date = False
 
     def get_stack(self, stack_msg: StackManifest):
         """Subscribe to the composed stack"""
@@ -35,20 +36,29 @@ class MutoDefaultNativePlugin(Node):
         If the repo exists, simply updates it.
         """
         target_dir = os.path.join(
-            self.deployment_path, self.current_stack.name.replace(" ", "_")
+            WORKSPACES_PATH, self.current_stack.name.replace(" ", "_")
         )
         if os.path.exists(os.path.join(target_dir, ".git")):
             os.chdir(target_dir)
-            cmd = f"git fetch --recurse-submodules origin && git checkout {branch} && git pull --recurse-submodules origin {branch}"
+            cmd = (
+                f"git fetch --recurse-submodules origin && "
+                f"git checkout {branch} && "
+                f"git pull --recurse-submodules origin {branch} && "
+                f"git submodule update --recursive --remote"
+            )
         else:
             if os.path.exists(target_dir):
                 shutil.rmtree(target_dir)
             os.makedirs(target_dir, exist_ok=True)
-            cmd = f"git clone --recurse-submodules -b {branch} {repo_url} {target_dir}"
+            cmd = (
+                f"git clone --recurse-submodules -b {branch} {repo_url} {target_dir} && "
+                f"cd {target_dir} && "
+                f"git submodule foreach 'git checkout main || git checkout -b main origin/main' && "
+                f"git submodule update --recursive --remote"
+            )
         command = subprocess.run(cmd, shell=True, check=True, capture_output=True)
-        # TODO: if returncode != 0, throw exception (command.check_returncode accomplishes this)
-        self.get_logger().info(f"command stdout: {command.stdout}")
-
+        self.is_up_to_date = GIT_UP_TO_DATE_MSG in command.stdout.decode()
+        self.get_logger().info(f"command stdout: {command.stdout.decode()} Repo UPTODATE status: {self.is_up_to_date}")
 
     def from_tar(self, tar_file_path):
         """If the repo is a compressed file that needs to be unextracted"""
@@ -60,6 +70,8 @@ class MutoDefaultNativePlugin(Node):
                 "colcon",
                 "build",
                 "--symlink-install",
+                "--packages-ignore",
+                "rototui_css",
                 "--cmake-args",
                 "-DCMAKE_BUILD_TYPE=Release",
             ],
@@ -83,9 +95,9 @@ class MutoDefaultNativePlugin(Node):
                 self.from_git(
                     repo_url=self.current_stack.url, branch=self.current_stack.branch
                 )
-                self.install_dependencies()
-                self.build_workspace()
-                self.get_logger().warn("No mode provided. Skipping")
+                if self.is_up_to_date:
+                    self.install_dependencies()
+                    self.build_workspace()
             response.err_msg = str("Successful")
             response.success = True
         except Exception as e:
