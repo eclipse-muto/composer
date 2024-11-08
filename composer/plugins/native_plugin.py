@@ -95,7 +95,7 @@ class MutoDefaultNativePlugin(Node):
                 self.from_git(
                     repo_url=self.current_stack.url, branch=self.current_stack.branch
                 )
-                if self.is_up_to_date:
+                if not self.is_up_to_date:
                     self.install_dependencies()
                     self.build_workspace()
             response.err_msg = str("Successful")
