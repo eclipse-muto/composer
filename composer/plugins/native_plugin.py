@@ -8,10 +8,6 @@ from muto_msgs.srv import NativePlugin
 from core.model.muto_archive import MutoArchive
 
 WORKSPACES_PATH = os.path.join("/var", "tmp", "muto_workspaces")
-GIT_UP_TO_DATE_MSG = "Your branch is up to date"
-
-# TODO: When the version is already up to date, don't install rosdeps and don't build, else do
-
 
 class MutoDefaultNativePlugin(Node):
     """The plugin for setting up the workspace (pull, clone, build, install dependendices, etc.)"""
@@ -34,31 +30,55 @@ class MutoDefaultNativePlugin(Node):
         """
         Clones a git repository if that repo does not exist within deployment path.
         If the repo exists, simply updates it.
+        Handles cases where the branch is not found or HEAD is not properly set.
         """
         target_dir = os.path.join(
             WORKSPACES_PATH, self.current_stack.name.replace(" ", "_")
         )
+
         if os.path.exists(os.path.join(target_dir, ".git")):
             os.chdir(target_dir)
-            cmd = (
-                f"git fetch --recurse-submodules origin && "
-                f"git checkout {branch} && "
-                f"git pull --recurse-submodules origin {branch} && "
-                f"git submodule update --recursive --remote"
-            )
+            subprocess.run("git fetch --recurse-submodules origin", shell=True, check=True)
+
+            try:
+                local_commit = subprocess.check_output(
+                    "git rev-parse @", shell=True, text=True
+                ).strip()
+                remote_commit = subprocess.check_output(
+                    "git rev-parse @{u}", shell=True, text=True
+                ).strip()
+
+                self.is_up_to_date = local_commit == remote_commit
+            except subprocess.CalledProcessError:
+                self.get_logger().warn("HEAD not set. Checking out branch.")
+                subprocess.run(f"git checkout {branch}", shell=True, check=True)
+                self.is_up_to_date = False
+
+            if not self.is_up_to_date:
+                cmd = (
+                    f"git checkout {branch} && "
+                    f"git pull --recurse-submodules origin {branch} && "
+                    f"git submodule update --recursive --remote"
+                )
+                subprocess.run(cmd, shell=True, check=True)
         else:
             if os.path.exists(target_dir):
                 shutil.rmtree(target_dir)
             os.makedirs(target_dir, exist_ok=True)
-            cmd = (
-                f"git clone --recurse-submodules -b {branch} {repo_url} {target_dir} && "
-                f"cd {target_dir} && "
-                f"git submodule foreach 'git checkout main || git checkout -b main origin/main' && "
-                f"git submodule update --recursive --remote"
+
+            subprocess.run(
+                f"git clone --recurse-submodules -b {branch} {repo_url} {target_dir}",
+                shell=True, check=True
             )
-        command = subprocess.run(cmd, shell=True, check=True, capture_output=True)
-        self.is_up_to_date = GIT_UP_TO_DATE_MSG in command.stdout.decode()
-        self.get_logger().info(f"command stdout: {command.stdout.decode()} Repo UPTODATE status: {self.is_up_to_date}")
+            os.chdir(target_dir)
+            try:
+                subprocess.run(f"git checkout {branch}", shell=True, check=True)
+            except subprocess.CalledProcessError:
+                self.get_logger().warn(f"Branch '{branch}' not found. Falling back to 'main'.")
+                subprocess.run("git checkout main", shell=True, check=True)
+            self.is_up_to_date = False
+
+
 
     def from_tar(self, tar_file_path):
         """If the repo is a compressed file that needs to be unextracted"""
@@ -95,9 +115,9 @@ class MutoDefaultNativePlugin(Node):
                 self.from_git(
                     repo_url=self.current_stack.url, branch=self.current_stack.branch
                 )
-                # if not self.is_up_to_date:  # TODO:
-                self.install_dependencies()
-                self.build_workspace()
+                if not self.is_up_to_date:
+                    self.install_dependencies()
+                    self.build_workspace()
             response.err_msg = str("Successful")
             response.success = True
         except Exception as e:
