@@ -1,0 +1,12 @@
+/**:
+  ros__parameters:
+    stack_topic: "stack"
+    twin_topic: "twin"
+    thing_messages_topic: "thing_messages"
+    ignored_packages: ["rototui_css"]
+
+    anonymous: false
+    attributes: '{"brand": "muto", "model": "composer"}'  # You can add exa
+    prefix: muto
+    namespace: org.eclipse.muto.sandbox
+    name: composer-01
