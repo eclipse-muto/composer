@@ -5,7 +5,6 @@ import rclpy
 from rclpy.node import Node
 from muto_msgs.msg import StackManifest
 from muto_msgs.srv import NativePlugin
-from core.model.muto_archive import MutoArchive
 
 WORKSPACES_PATH = os.path.join("/var", "tmp", "muto_workspaces")
 
