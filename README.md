@@ -295,7 +295,7 @@ To start `Muto` as a whole (including `composer`):
 ```bash
 cd $HOME/muto
 source /opt/ros/$ROS_DISTRO/setup.bash && source install/local_setup.bash
-ros2 launch launch/muto.launch.py composer.launch.py
+ros2 launch launch/muto.launch.py
 ```
 
 ### Sending Deployment Actions
