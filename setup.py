@@ -13,7 +13,7 @@ setup(
             ['resource/' + PACKAGE_NAME]),
         ('share/' + PACKAGE_NAME, ['package.xml']),
         (os.path.join("share", PACKAGE_NAME, "config"), glob("config/*.yaml")),
-        (os.path.join("share", PACKAGE_NAME, "launch"), glob("launch/*.yaml")),
+        (os.path.join("share", PACKAGE_NAME, "launch"), glob("launch/*.launch.py")),
     ],
     install_requires=['docker', 'setuptools'],
     zip_safe=True,
@@ -26,9 +26,9 @@ setup(
     entry_points={
         'console_scripts': [
             'muto_composer = composer.muto_composer:main',
-            'compose_plugin = composer.compose_plugin:main',
-            'native_plugin = composer.native_plugin:main',
-            'launch_plugin = composer.launch_plugin:main'
+            'compose_plugin = composer.plugins.compose_plugin:main',
+            'native_plugin = composer.plugins.native_plugin:main',
+            'launch_plugin = composer.plugins.launch_plugin:main'
         ],
     },
 )
