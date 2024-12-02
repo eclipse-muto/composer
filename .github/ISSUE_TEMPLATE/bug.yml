@@ -88,3 +88,13 @@ body:
       description: Provide an additional detailed description / screenshots / evidences of the bug
       placeholder: I would like to add...
   - type: checkboxes
+    id: terms
+    validations:
+      required: true
+    attributes:
+      label: Agree to Terms
+      description: Please confirm you have read and agree to the terms
+      options:
+        - label: "I have read and agree to the terms and conditions"
+          required: true
+
