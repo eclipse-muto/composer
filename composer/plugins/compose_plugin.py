@@ -5,12 +5,10 @@ from std_msgs.msg import String
 from muto_msgs.msg import StackManifest
 from muto_msgs.srv import ComposePlugin
 
-COMPOSE_PLUGIN_NODE_NAME = "compose_plugin"
-
 
 class MutoDefaultComposePlugin(Node):
     def __init__(self):
-        super().__init__(COMPOSE_PLUGIN_NODE_NAME)
+        super().__init__("compose_plugin")
 
         self.incoming_stack = None
 

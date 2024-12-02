@@ -260,7 +260,7 @@ class MutoDefaultNativePlugin(Node):
                     "-r",
                     "-y",
                 ],
-                check=True,
+                check=False,
                 cwd=self.get_workspace_dir(),
             )
         except subprocess.CalledProcessError as e:
