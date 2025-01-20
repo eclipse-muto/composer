@@ -4,6 +4,7 @@ from rclpy.node import Node
 from std_msgs.msg import String
 from muto_msgs.msg import StackManifest
 from muto_msgs.srv import ComposePlugin
+from composer.model.stack import Stack
 
 
 class MutoDefaultComposePlugin(Node):
@@ -11,6 +12,7 @@ class MutoDefaultComposePlugin(Node):
         super().__init__("compose_plugin")
 
         self.incoming_stack = None
+        self.next_stack = None  # To store the next stack if needed
 
         self.create_subscription(String, "raw_stack", self.handle_raw_stack, 10)
         self.composed_stack_publisher = self.create_publisher(
@@ -26,7 +28,8 @@ class MutoDefaultComposePlugin(Node):
         Parses the JSON data and stores it.
         """
         try:
-            self.incoming_stack = json.loads(stack_msg.data)
+            stack_data = json.loads(stack_msg.data)
+            self.incoming_stack = stack_data
             self.get_logger().info("Received raw stack and parsed successfully.")
         except json.JSONDecodeError as e:
             self.get_logger().error(f"Failed to parse raw stack JSON: {e}")
@@ -59,6 +62,7 @@ class MutoDefaultComposePlugin(Node):
             self.get_logger().error(f"Exception during compose: {e}")
         return response
 
+
     def publish_composed_stack(self):
         """
         Publish the composed stack to the ROS environment.
@@ -88,6 +92,7 @@ class MutoDefaultComposePlugin(Node):
         stack_msg.on_kill = stack.get("on_kill", "")
         stack_msg.args = json.dumps(stack.get("args", {}))
         stack_msg.source = json.dumps(stack.get("source", {}))
+        stack_msg.stack = json.dumps(stack)
         return stack_msg
 
 
@@ -97,7 +102,3 @@ def main():
     rclpy.spin(compose_plugin)
     compose_plugin.destroy_node()
     rclpy.shutdown()
-
-
-if __name__ == "__main__":
-    main()
