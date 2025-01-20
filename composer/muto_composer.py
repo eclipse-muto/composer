@@ -12,6 +12,9 @@ from ament_index_python.packages import get_package_share_directory
 from composer.workflow.router import Router
 from composer.workflow.pipeline import Pipeline
 from rclpy.task import Future
+from composer.workflow.schemas.pipeline_schema import PIPELINE_SCHEMA
+from jsonschema import validate, ValidationError
+from composer.model.stack import Stack
 
 CORE_TWIN_NODE_NAME = "core_twin"
 
@@ -32,36 +35,46 @@ class MutoComposer(Node):
             self.get_parameter("twin_namespace").get_parameter_value().string_value
         )
         self.name = self.get_parameter("name").get_parameter_value().string_value
-        self.incoming_stack_topic = (
+        self.next_stack_topic = (
             self.get_parameter("stack_topic").get_parameter_value().string_value
         )
 
         self.create_subscription(
-            MutoAction, self.incoming_stack_topic, self.on_stack_callback, 10
+            MutoAction, self.next_stack_topic, self.on_stack_callback, 10
         )
+
         self.bootstrap_pub = self.create_publisher(
-            MutoAction, self.incoming_stack_topic, 10
+            MutoAction, self.next_stack_topic, 10
         )
+        self.raw_stack_publisher = self.create_publisher(String, "raw_stack", 10)
+        self.current_stack_publisher = self.create_publisher(
+            String, "current_stack", 10
+        )
+        self.next_stack_publisher = self.create_publisher(String, "next_stack", 10)
+
         self.get_stack_cli = self.create_client(
             CoreTwin, f"{CORE_TWIN_NODE_NAME}/get_stack_definition"
         )
-        self.raw_stack_publisher = self.create_publisher(String, "raw_stack", 10)
-
-        self.incoming_stack = None  # Incoming stack from agent
+        self.current_stack = None
+        self.next_stack = None  # Next stack to be processed
         self.method = None  # Action data coming from agent
         self.thing_id = f"{self.twin_namespace}:{self.name}"
 
+        # Load pipeline configuration
         pipeline_file_path = os.path.join(
             get_package_share_directory("composer"), "config", "pipeline.yaml"
         )
-        with open(pipeline_file_path, "r", encoding="utf-8") as f:
-            pipeline_config = yaml.safe_load(f)["pipelines"]
+        pipeline_config = self.load_pipeline_config(pipeline_file_path)
+        self.init_pipelines(pipeline_config["pipelines"])
+        # self.router = Router(self.pipelines)
 
-        self.init_pipelines(pipeline_config)
-        self.router = Router(self.pipelines)
+        # Bootstrap
         self.bootstrap()
 
     def bootstrap(self):
+        """
+        Bootstrap the device by activating the default stack.
+        """
         try:
             self.get_logger().info("Edge Device bootstrapping...")
             req = CoreTwin.Request()
@@ -78,13 +91,66 @@ class MutoComposer(Node):
         except Exception as e:
             self.get_logger().error(f"Error while bootstrapping: {e}")
 
+    def activate(self, future: Future):
+        """
+        Callback to handle the response from the CoreTwin service during bootstrap.
+        """
+        try:
+            result = future.result()
+            if result:
+                self.current_stack = json.loads(result.output)
+                resolved_stack = self.resolve_expression(
+                    json.dumps(self.current_stack)
+                )
+                self.publish_current_stack(resolved_stack)
+                self.publish_raw_stack(resolved_stack)
+                self.pipeline_execute("start")
+                self.get_logger().info("Edge Device bootstrap done.")
+            else:
+                self.get_logger().error(
+                    "No default stack received. Aborting bootstrap."
+                )
+        except AttributeError:
+            self.get_logger().error("No default stack. Aborting bootstrap")
+        except Exception as e:
+            self.get_logger().error(f"Error while bootstrapping: {e}")
+
+    def load_pipeline_config(self, file_path):
+        """
+        Load and validate the pipeline configuration from a YAML file.
+        """
+        with open(file_path, "r") as f:
+            config = yaml.safe_load(f)
+        try:
+            validate(instance=config, schema=PIPELINE_SCHEMA)
+        except ValidationError as e:
+            raise ValueError(f"Invalid pipeline configuration: {e}")
+        return config
+
+    def init_pipelines(self, pipeline_config):
+        """
+        Initialize pipelines that are loaded from pipeline.yaml file.
+        """
+        loaded_pipelines = {}
+
+        for pipeline_item in pipeline_config:
+            name = pipeline_item["name"]
+            pipeline_spec = pipeline_item["pipeline"]
+            compensation_spec = pipeline_item.get("compensation", None)
+
+            # Create a Pipeline object for each pipeline
+            pipeline = Pipeline(name, pipeline_spec, compensation_spec)
+            loaded_pipelines[name] = pipeline
+
+        self.pipelines = loaded_pipelines
+
     def on_stack_callback(self, stack_msg: MutoAction):
         """
         Callback method for when a MutoAction message from the agent arrives.
         Parses the stackId and gets the stack using the core_twin's service.
         """
         try:
-            self.method = stack_msg.method  # start, kill, apply, etc.
+            self.method = stack_msg.method  # start, kill, apply
             payload = json.loads(stack_msg.payload)
             payload_value = payload["value"]
             stack_id = payload_value.get("stackId", "")
@@ -107,15 +173,134 @@ class MutoComposer(Node):
         try:
             result = future.result()
             if result:
-                self.incoming_stack = result.output
-                resolved_stack = self.resolve_expression(self.incoming_stack)
+                next_stack = json.loads(result.output)
+                resolved_stack = self.resolve_expression(
+                    json.dumps(next_stack)
+                )
+
+                self.next_stack = resolved_stack
+                self.publish_next_stack(self.next_stack)
                 self.publish_raw_stack(resolved_stack)
-                if self.method:
-                    self.router.route(action=self.method)
+                self.determine_execution_path()
             else:
                 self.get_logger().warn("Received empty result from service call.")
         except Exception as e:
+            import traceback
+
+            traceback.print_exc()
             self.get_logger().warn(f"Service call failed: {e}")
+
+    def publish_current_stack(self, stack: str):
+        """Publish the current stack to the ROS environment."""
+        stack_msg = String(data=stack)
+        self.current_stack_publisher.publish(stack_msg)
+
+    def publish_next_stack(self, stack: str):
+        """Publish the next stack to the ROS environment."""
+        stack_msg = String(data=stack)
+        self.next_stack_publisher.publish(stack_msg)
+
+    def publish_raw_stack(self, stack: str):
+        """Publish the received stack to the ROS environment."""
+        stack_msg = String(data=stack)
+        self.raw_stack_publisher.publish(stack_msg)
+
+    def determine_execution_path(self):
+        """
+        Determines execution path and merge stacks based on stack attributes.
+        """
+        if not self.next_stack:
+            self.get_logger().info("Waiting for the next stack.")
+            return
+
+        try:
+            next_stack = json.loads(self.next_stack)
+
+        except json.JSONDecodeError as e:
+            self.get_logger().error(f"Failed to parse next stack JSON: {e}")
+            return
+
+        is_next_stack_empty = not next_stack.get("node", "") and not next_stack.get(
+            "composable", ""
+        )
+
+        has_launch_description = bool(next_stack.get("launch_description_source"))
+        has_on_start_and_on_kill = all(
+            [next_stack.get("on_start"), next_stack.get("on_kill")]
+        )
+
+        if is_next_stack_empty and (has_launch_description or has_on_start_and_on_kill):
+            # Condition to run NativePlugin
+            should_run_native = True
+            should_run_launch = True
+            self.get_logger().info(
+                "Conditions met to run NativePlugin and LaunchPlugin."
+            )
+        elif not is_next_stack_empty:
+            # Condition to merge stacks and bypass NativePlugin
+            should_run_native = False
+            should_run_launch = True
+            self.get_logger().info(
+                "Conditions met to merge stacks and bypass NativePlugin."
+            )
+            # Merge current and next stacks
+            merged_stack = self.merge(self.current_stack, next_stack)
+            self.current_stack = merged_stack
+            self.publish_raw_stack(json.dumps(merged_stack))  # Publish the merged stack
+        else:
+            # Conditions not met to run NativePlugin
+            should_run_native = False
+            should_run_launch = False
+            self.get_logger().info(
+                "Conditions not met to run NativePlugin AND LaunchPlugin."
+            )
+
+        # Execute the appropriate pipeline with context variables
+        execution_context = {
+            "should_run_native": should_run_native,
+            "should_run_launch": should_run_launch,
+        }
+        self.pipeline_execute(self.method, execution_context)
+
+    def merge(self, current_stack: dict, next_stack: dict) -> dict:
+        """
+        Merge current and next stack dictionaries.
+        Placeholder implementation: override current stack with next stack's non-empty attributes.
+
+        Args:
+            current_stack (dict): The current stack data.
+            next_stack (dict): The next stack data.
+
+        Returns:
+            dict: The merged stack data.
+        """
+        stack_1 = Stack(manifest=current_stack)
+        stack_2 = Stack(manifest=next_stack)
+        self.get_logger().info(f"Current stack: {stack_1.manifest}")  # TODO: They are the same for some reason
+        self.get_logger().info(f"Next stack: {stack_2.manifest}")
+        merged = stack_1.merge(stack_2)
+        self.get_logger().info(
+            f"Merged current stack with next stack: {merged.manifest}"
+        )
+
+        return merged.manifest
+
+    def pipeline_execute(self, pipeline_name: str, additional_context: dict = None):
+        """
+        Execute a specific pipeline by name with additional context.
+
+        Args:
+            pipeline_name (str): The name of the pipeline to execute.
+            additional_context (dict): Additional context variables for conditions.
+        """
+        pipeline = self.pipelines.get(pipeline_name)
+        if pipeline:
+            self.get_logger().info(
+                f"Executing pipeline: {pipeline_name} with context: {additional_context}"
+            )
+            pipeline.execute_pipeline(additional_context=additional_context)
+        else:
+            self.get_logger().warn(f"No pipeline found with name: {pipeline_name}")
 
     def resolve_expression(self, value: str = "") -> str:
         """
@@ -125,7 +310,11 @@ class MutoComposer(Node):
         result = value
 
         for expression in expressions:
-            expr, var = expression.split()
+            parts = expression.split()
+            if len(parts) != 2:
+                self.get_logger().warning(f"Invalid expression format: {expression}")
+                continue
+            expr, var = parts
             resolved_value = ""
 
             try:
@@ -133,6 +322,10 @@ class MutoComposer(Node):
                     resolved_value = get_package_share_directory(var)
                 elif expr == "env":
                     resolved_value = os.getenv(f"{var}", "")
+                elif expr == "arg":
+                    self.get_logger().info(f"Parsing {expr}: {var}")
+                    resolved_value = self.incoming_stack.get("args", {}).get(var, "")
+                    self.get_logger().info(f"Resolved arg: {resolved_value}")
                 else:
                     self.get_logger().info(
                         "No muto expression found in the given string"
@@ -145,58 +338,16 @@ class MutoComposer(Node):
                 )
             except KeyError:
                 self.get_logger().warn(f"{var} does not exist.")
-                return result
+                continue
             except Exception as e:
                 self.get_logger().info(f"Exception occurred: {e}")
+                continue
         return result
 
-    def publish_raw_stack(self, stack: str):
-        """Publish the received stack to the ROS environment."""
-        stack_msg = String(data=stack)
-        self.raw_stack_publisher.publish(stack_msg)
 
-    def activate(self, future: Future):
-        """Activate the default stack"""
-        try:
-            msg = MutoAction()
-            msg.payload = json.dumps(
-                {
-                    "value": {
-                        "stackId": json.loads(future.result().output).get("stackId")
-                    }
-                }
-            )
-            msg.method = "start"
-            self.bootstrap_pub.publish(msg)
-            self.get_logger().info("Edge Device bootstrap done.")
-        except AttributeError:
-            self.get_logger().error("No default stack. Aborting bootstrap")
-        except Exception as e:
-            self.get_logger().error(f"Error while bootstrapping: {e}")
-
-    def init_pipelines(self, pipeline_config):
-        """Initialize pipelines that are loaded from pipeline.yaml file."""
-        loaded_pipelines = {}
-
-        for pipeline_item in pipeline_config:
-            name = pipeline_item["name"]
-            pipeline_spec = pipeline_item["pipeline"]
-            compensation_spec = pipeline_item.get("compensation", None)
-
-            # Create a Pipeline object for each pipeline
-            pipeline = Pipeline(name, pipeline_spec, compensation_spec)
-            loaded_pipelines[name] = pipeline
-
-        self.pipelines = loaded_pipelines
-
-
-def main():
-    rclpy.init()
-    muto_composer = MutoComposer()
-    rclpy.spin(muto_composer)
-    muto_composer.destroy_node()
+def main(args=None):
+    rclpy.init(args=args)
+    composer = MutoComposer()
+    rclpy.spin(composer)
+    composer.destroy_node()
     rclpy.shutdown()
-
-
-if __name__ == "__main__":
-    main()

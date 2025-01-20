@@ -10,13 +10,12 @@ from muto_msgs.msg import StackManifest
 from muto_msgs.srv import LaunchPlugin, CoreTwin
 from composer.workflow.launcher import Ros2LaunchParent
 from composer.plugins.native_plugin import WORKSPACES_PATH
-
+from composer.model.stack import Stack
 
 class MutoDefaultLaunchPlugin(Node):
     def __init__(self):
         super().__init__("launch_plugin")
 
-        # Initialize ROS 2 services
         self.start_srv = self.create_service(
             LaunchPlugin, "muto_start_stack", self.handle_start
         )
@@ -27,18 +26,14 @@ class MutoDefaultLaunchPlugin(Node):
             LaunchPlugin, "muto_apply_stack", self.handle_apply
         )
 
-        # Subscription to receive the composed stack
         self.create_subscription(StackManifest, "composed_stack", self.get_stack, 10)
 
-        # Client to set the current stack
         self.set_stack_cli = self.create_client(CoreTwin, "core_twin/set_current_stack")
 
-        # Initialize attributes
         self.current_stack: Optional[StackManifest] = None
         self.launch_arguments = []
         self.launcher = Ros2LaunchParent(self.launch_arguments)
 
-        # Set up asyncio event loop
         self.async_loop = asyncio.get_event_loop()
         self.timer = self.create_timer(
             0.1, self.run_async_loop, callback_group=ReentrantCallbackGroup()
@@ -136,59 +131,74 @@ class MutoDefaultLaunchPlugin(Node):
             LaunchPlugin.Response: The response indicating success or failure.
         """
         try:
+            # launch logic changes depending on the contents of the stack
             if request.start:
-                for arg in self.launch_arguments:
-                    self.get_logger().info(f"Launch Argument: {arg}")
+                if self.current_stack:
+                    self.source_workspaces()
 
-                self.source_workspaces()
-
-                if self.current_stack and self.current_stack.launch_description_source:
-                    launch_file = self.find_file(
-                        os.path.join(
-                            WORKSPACES_PATH, self.current_stack.name.replace(" ", "_")
-                        ),
-                        self.current_stack.launch_description_source,
-                    )
-                    if not launch_file:
-                        raise FileNotFoundError(
-                            f"Launch file not found: {self.current_stack.launch_description_source}"
+                    if self.current_stack.launch_description_source:
+                        launch_file = self.find_file(
+                            os.path.join(
+                                WORKSPACES_PATH,
+                                self.current_stack.name.replace(" ", "_"),
+                            ),
+                            self.current_stack.launch_description_source,
                         )
+                        if not launch_file:
+                            raise FileNotFoundError(
+                                f"Launch file not found: {self.current_stack.launch_description_source}"
+                            )
 
-                    # Schedule the coroutine in the event loop
-                    asyncio.run_coroutine_threadsafe(
-                        self.launcher.launch_a_launch_file(
-                            launch_file_path=launch_file,
-                            launch_file_arguments=self.launch_arguments,
-                        ),
-                        self.async_loop,
-                    )
-                    self.get_logger().info("Launch file execution initiated.")
-                elif self.current_stack and self.current_stack.on_start:
-                    script = self.find_file(
-                        os.path.join(
-                            WORKSPACES_PATH, self.current_stack.name.replace(" ", "_")
-                        ),
-                        self.current_stack.on_start,
-                    )
-                    if not script:
-                        raise FileNotFoundError(
-                            f"Script not found: {self.current_stack.on_start}"
+                        # Schedule the coroutine in the event loop
+                        asyncio.run_coroutine_threadsafe(
+                            self.launcher.launch_a_launch_file(
+                                launch_file_path=launch_file,
+                                launch_file_arguments=self.launch_arguments,
+                            ),
+                            self.async_loop,
                         )
+                        self.get_logger().info("Launch file execution initiated.")
+                    elif self.current_stack.on_start and self.current_stack.on_kill:
+                        script = self.find_file(
+                            os.path.join(
+                                WORKSPACES_PATH,
+                                self.current_stack.name.replace(" ", "_"),
+                            ),
+                            self.current_stack.on_start,
+                        )
+                        if not script:
+                            raise FileNotFoundError(
+                                f"Script not found: {self.current_stack.on_start}"
+                            )
 
-                    self.run_script(script)
-                    self.get_logger().info("Start script executed successfully.")
+                        self.run_script(script)
+                        self.get_logger().info("Start script executed successfully.")
+                    elif self.current_stack and (
+                        json.loads(self.current_stack.stack).get("node", "")
+                        or json.loads(self.current_stack.stack).get("composable", "")
+                    ):
+                        self.get_logger().info(
+                            "Assuming old style stack. Starting all nodes."
+                        )
+                        stack = Stack(manifest=json.loads(self.current_stack.stack))
+                        stack.launch(self.launcher)
+
+                    else:
+                        self.get_logger().warning(
+                            "No launch description or start script provided."
+                        )
+                        response.success = False
+                        response.err_msg = (
+                            "No launch description or start script provided."
+                        )
+                        return response
+
+                    response.success = True
+                    response.err_msg = ""
                 else:
-                    self.get_logger().warning(
-                        "No launch description or start script provided."
-                    )
                     response.success = False
-                    response.err_msg = (
-                        "No launch description or start script provided."
-                    )
-                    return response
-
-                response.success = True
-                response.err_msg = ""
+                    response.err_msg = "No current stack received."
+                    self.get_logger().error("No current stack received.")
             else:
                 response.success = False
                 response.err_msg = "Start flag not set in request."
@@ -233,8 +243,13 @@ class MutoDefaultLaunchPlugin(Node):
             if request.start:
                 if self.current_stack:
                     req = CoreTwin.Request()
-                    req.input = self.current_stack.stack_id
+                    req.input = self.current_stack.stack_id if self.current_stack.stack_id else None
+                    if req.input is None:
+                        response.success = False
+                        response.err_msg = "No stack ID available. Aborting kill operation"
+                        return response
                     future = self.set_stack_cli.call_async(req)
+                    self.get_logger().info("Setting stack to None.")
                     future.add_done_callback(self.set_stack_done_callback)
 
                     if self.current_stack.launch_description_source:
@@ -255,6 +270,14 @@ class MutoDefaultLaunchPlugin(Node):
 
                         self.run_script(script)
                         self.get_logger().info("Kill script executed successfully.")
+                    elif self.current_stack and (
+                        json.loads(self.current_stack.stack).get("node", "")
+                        or json.loads(self.current_stack.stack).get("composable", "")
+                    ):  # assuming old style stack
+                        self.get_logger().info(
+                            "Assuming old style stack. Killing all nodes."
+                        )
+                        self.launcher.kill()
                     else:
                         self.get_logger().warning(
                             "No launch description or kill script provided."
@@ -297,15 +320,30 @@ class MutoDefaultLaunchPlugin(Node):
             LaunchPlugin.Response: The response indicating success or failure.
         """
         try:
-            if request.start:
-                # TODO: Implement apply logic
-                self.get_logger().info("Handling apply operation.")
-                response.success = True
-                response.err_msg = ""
-            else:
-                response.success = False
-                response.err_msg = "Start flag not set in request."
-                self.get_logger().warning("Start flag not set in apply request.")
+            if self.current_stack:
+
+                # DEBUG log
+                for node in json.loads(self.current_stack.stack).get('node', ''):
+                    self.get_logger().info(f"Name: {node.get('name')}")
+                    self.get_logger().info(f"Exec: {node.get('exec')}")
+                    self.get_logger().info(f"Package: {node.get('pkg')}")
+                    self.get_logger().info(f"Action: {node.get('action')}\n")
+                
+                stack = Stack(manifest=json.loads(self.current_stack.stack))
+                stack.apply(self.launcher)
+
+                req = CoreTwin.Request()
+                req.input = self.current_stack.stack_id if self.current_stack.stack_id else None
+
+                if req.input is None:
+                    response.success = False
+                    response.err_msg = "No stack ID available"
+                    return response
+                future = self.set_stack_cli.call_async(req)
+                future.add_done_callback(self.set_stack_done_callback)
+
+            response.success = True
+            response.err_msg = ""
         except Exception as e:
             self.get_logger().error(f"Exception occurred during apply: {e}")
             response.err_msg = str(e)
