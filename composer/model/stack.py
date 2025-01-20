@@ -406,11 +406,7 @@ class Stack():
         active_nodes = [(active[1] if active[1] != '/' else '') +
                         '/' + active[0] for active in self.get_active_nodes()]
         
-        for i in active_nodes:
-            print("ACTIVE NODES: ", i)
-        
-        should_node_run = f'/{node.namespace}/{node.name}' not in active_nodes 
-        print(f'/{node.namespace}/{node.name} should run: {should_node_run}')
+        should_node_run = f'{node.namespace}/{node.name}' not in active_nodes 
         return should_node_run
 
     def load_common_composables(self, container, launch_description: LaunchDescription):
@@ -428,7 +424,6 @@ class Stack():
                     namespace=cn.namespace,
                     plugin=cn.plugin
                 ))
-        print(f'Node DESC: {node_desc}')
 
         if node_desc:
             load_action = LoadComposableNodes(
