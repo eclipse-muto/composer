@@ -1,9 +1,9 @@
 import importlib
-import json
+import uuid
 import rclpy
 from rclpy.node import Node
 import rclpy.logging
-
+from composer.workflow.safe_evaluator import SafeEvaluator
 
 class Pipeline:
     def __init__(self, name, steps, compensation):
@@ -20,6 +20,7 @@ class Pipeline:
         self.compensation = compensation
         self.plugins = self.load_plugins()
         self.logger = rclpy.logging.get_logger(f"{self.name}_pipeline")
+        self.context = {}  # To store step results
 
     def load_plugins(self) -> dict:
         """
@@ -55,13 +56,34 @@ class Pipeline:
                             f"Plugin '{plugin_name}' not found in module '{module_name}'. "
                             "Ensure the plugin has a corresponding service definition."
                         )
+        for step in self.compensation:
+            plugin_name = step.get("plugin")
+            if plugin_name and plugin_name not in plugin_dict:
+                try:
+                    plugin_class = getattr(module, plugin_name)
+                    plugin_dict[plugin_name] = plugin_class
+                except AttributeError:
+                    self.logger.error(
+                        f"Compensation Plugin '{plugin_name}' not found in '{module_name}'"
+                    )
+                    raise Exception(
+                        f"Compensation Plugin '{plugin_name}' not found in module '{module_name}'. "
+                        "Ensure the plugin has a corresponding service definition."
+                    )
         return plugin_dict
 
-    def execute_pipeline(self):
+    def execute_pipeline(self, additional_context: dict = None):
         """
         Execute each pipeline step sequentially.
         If a step fails, execute compensation steps and abort the pipeline.
+        Supports conditional execution based on step outcomes.
+
+        Args:
+            additional_context (dict): Additional context variables to include.
         """
+        if additional_context:
+            self.context.update(additional_context)
+
         executor = rclpy.create_node(f"{self.name}_pipeline_executor")
         failed = False
 
@@ -70,6 +92,25 @@ class Pipeline:
                 break
             sequence = item.get("sequence", [])
             for step in sequence:
+                step_name = step.get("name")
+                condition = step.get("condition")
+
+                # Evaluate condition if present
+                if condition:
+                    evaluator = SafeEvaluator(self.context)
+                    try:
+                        should_execute = evaluator.eval_expr(condition)
+                        self.logger.debug(f"Evaluating condition for step '{step_name}': {condition} => {should_execute}")
+                        if not should_execute:
+                            self.logger.info(f"Skipping step '{step_name}' due to condition: {condition}")
+                            continue
+                    except ValueError as e:
+                        self.logger.error(f"Condition evaluation failed for step '{step_name}': {e}")
+                        self.execute_compensation(executor)
+                        failed = True
+                        self.logger.error("Aborting the rest of the pipeline due to condition evaluation failure.")
+                        break
+
                 try:
                     response = self.execute_step(step, executor)
                     if not response:
@@ -79,15 +120,17 @@ class Pipeline:
 
                     if not response.success:
                         raise Exception(f"Step execution error: {response.err_msg}")
-                    executor.get_logger().info(f"Step passed: {step.get('plugin', '')}")
+
+                    self.context[step_name] = response  # Store the response in context
+                    self.logger.info(f"Step passed: {step_name}")
 
                 except Exception as e:
-                    executor.get_logger().warn(
-                        f"Step failed: {step.get('plugin', '')}, Exception: {e}"
+                    self.logger.warn(
+                        f"Step failed: {step_name}, Exception: {e}"
                     )
                     self.execute_compensation(executor)
                     failed = True
-                    executor.get_logger().error("Aborting the rest of the pipeline")
+                    self.logger.error("Aborting the rest of the pipeline")
                     break
 
         executor.destroy_node()
@@ -117,10 +160,10 @@ class Pipeline:
             raise Exception(f"Plugin '{plugin_name}' not loaded.")
 
         cli = executor.create_client(plugin, service_name)
-        executor.get_logger().info(f"Executing step: {plugin_name}")
+        self.logger.info(f"Executing step: {plugin_name}")
 
         if not cli.wait_for_service(timeout_sec=5.0):
-            executor.get_logger().error(
+            self.logger.error(
                 f"Service '{cli.srv_name}' is not available. Cannot execute step."
             )
             return None
@@ -142,14 +185,14 @@ class Pipeline:
         Args:
             executor (Node): The ROS node used for service communication.
         """
-        executor.get_logger().info("Executing compensation steps.")
+        self.logger.info("Executing compensation steps.")
         if self.compensation:
             for step in self.compensation:
                 try:
                     self.execute_step(step, executor)
                 except Exception as e:
-                    executor.get_logger().warn(
+                    self.logger.warn(
                         f"Compensation step failed: {step.get('plugin', '')}, Exception: {e}"
                     )
         else:
-            executor.get_logger().warn("No compensation steps to execute.")
+            self.logger.warn("No compensation steps to execute.")
