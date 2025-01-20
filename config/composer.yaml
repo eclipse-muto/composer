@@ -3,10 +3,10 @@
     stack_topic: "stack"
     twin_topic: "twin"
     thing_messages_topic: "thing_messages"
-    ignored_packages: ["rototui_css"]
+    ignored_packages: [""]
 
     anonymous: false
-    attributes: '{"brand": "muto", "model": "composer"}'  # You can add exa
+    attributes: '{"brand": "muto", "model": "composer"}'
     prefix: muto
     namespace: org.eclipse.muto.sandbox
     name: composer-01
