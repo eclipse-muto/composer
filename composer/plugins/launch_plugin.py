@@ -50,7 +50,6 @@ class MutoDefaultLaunchPlugin(Node):
             self.current_stack = stack_msg
             args = json.loads(self.current_stack.args)
             self.launch_arguments = [f"{key}:={value}" for key, value in args.items()]
-            self.get_logger().info("Parsed launch arguments from stack.")
         except json.JSONDecodeError as e:
             self.get_logger().error(f"Error parsing launch arguments: {e}")
         except Exception as e:
@@ -177,9 +176,6 @@ class MutoDefaultLaunchPlugin(Node):
                         json.loads(self.current_stack.stack).get("node", "")
                         or json.loads(self.current_stack.stack).get("composable", "")
                     ):
-                        self.get_logger().info(
-                            "Assuming old style stack. Starting all nodes."
-                        )
                         stack = Stack(manifest=json.loads(self.current_stack.stack))
                         stack.launch(self.launcher)
 
@@ -197,8 +193,8 @@ class MutoDefaultLaunchPlugin(Node):
                     response.err_msg = ""
                 else:
                     response.success = False
-                    response.err_msg = "No current stack received."
-                    self.get_logger().error("No current stack received.")
+                    response.err_msg = "No default stack on device."
+                    self.get_logger().info("No default stack on device.")
             else:
                 response.success = False
                 response.err_msg = "Start flag not set in request."
@@ -242,16 +238,6 @@ class MutoDefaultLaunchPlugin(Node):
         try:
             if request.start:
                 if self.current_stack:
-                    req = CoreTwin.Request()
-                    req.input = self.current_stack.stack_id if self.current_stack.stack_id else None
-                    if req.input is None:
-                        response.success = False
-                        response.err_msg = "No stack ID available. Aborting kill operation"
-                        return response
-                    future = self.set_stack_cli.call_async(req)
-                    self.get_logger().info("Setting stack to None.")
-                    future.add_done_callback(self.set_stack_done_callback)
-
                     if self.current_stack.launch_description_source:
                         self.launcher.kill()
                         self.get_logger().info("Launch process killed successfully.")
@@ -274,9 +260,6 @@ class MutoDefaultLaunchPlugin(Node):
                         json.loads(self.current_stack.stack).get("node", "")
                         or json.loads(self.current_stack.stack).get("composable", "")
                     ):  # assuming old style stack
-                        self.get_logger().info(
-                            "Assuming old style stack. Killing all nodes."
-                        )
                         self.launcher.kill()
                     else:
                         self.get_logger().warning(
@@ -321,26 +304,8 @@ class MutoDefaultLaunchPlugin(Node):
         """
         try:
             if self.current_stack:
-
-                # DEBUG log
-                for node in json.loads(self.current_stack.stack).get('node', ''):
-                    self.get_logger().info(f"Name: {node.get('name')}")
-                    self.get_logger().info(f"Exec: {node.get('exec')}")
-                    self.get_logger().info(f"Package: {node.get('pkg')}")
-                    self.get_logger().info(f"Action: {node.get('action')}\n")
-                
                 stack = Stack(manifest=json.loads(self.current_stack.stack))
                 stack.apply(self.launcher)
-
-                req = CoreTwin.Request()
-                req.input = self.current_stack.stack_id if self.current_stack.stack_id else None
-
-                if req.input is None:
-                    response.success = False
-                    response.err_msg = "No stack ID available"
-                    return response
-                future = self.set_stack_cli.call_async(req)
-                future.add_done_callback(self.set_stack_done_callback)
 
             response.success = True
             response.err_msg = ""
@@ -350,20 +315,6 @@ class MutoDefaultLaunchPlugin(Node):
             response.success = False
         return response
 
-    def set_stack_done_callback(self, future):
-        """Callback function executed when the set_current_stack service call is completed."""
-        try:
-            result = future.result()
-            if result:
-                self.get_logger().info(
-                    "Edge device stack setting completed successfully."
-                )
-            else:
-                self.get_logger().warning(
-                    "Edge device stack setting failed. Please try your request again."
-                )
-        except Exception as e:
-            self.get_logger().error(f"Exception in set_stack_done_callback: {e}")
 
 
 def main():

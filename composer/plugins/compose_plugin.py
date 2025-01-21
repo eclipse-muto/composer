@@ -30,7 +30,6 @@ class MutoDefaultComposePlugin(Node):
         try:
             stack_data = json.loads(stack_msg.data)
             self.incoming_stack = stack_data
-            self.get_logger().info("Received raw stack and parsed successfully.")
         except json.JSONDecodeError as e:
             self.get_logger().error(f"Failed to parse raw stack JSON: {e}")
 
@@ -47,11 +46,10 @@ class MutoDefaultComposePlugin(Node):
                     self.publish_composed_stack()
                     response.success = True
                     response.err_msg = ""
-                    self.get_logger().info("Composed stack published successfully.")
                 else:
-                    response.success = False
-                    response.err_msg = "No incoming stack to compose."
-                    self.get_logger().warn("No incoming stack to compose.")
+                    response.success = True
+                    response.err_msg = "No default stack."
+                    self.get_logger().warn("No stack to compose.")
             else:
                 response.success = False
                 response.err_msg = "Start flag not set in request."
@@ -62,14 +60,12 @@ class MutoDefaultComposePlugin(Node):
             self.get_logger().error(f"Exception during compose: {e}")
         return response
 
-
     def publish_composed_stack(self):
         """
         Publish the composed stack to the ROS environment.
         """
         stack_msg = self.parse_stack(self.incoming_stack)
         self.composed_stack_publisher.publish(stack_msg)
-        self.get_logger().info("Published composed stack.")
 
     def parse_stack(self, stack: dict) -> StackManifest:
         """
