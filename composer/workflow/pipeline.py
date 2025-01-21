@@ -84,7 +84,7 @@ class Pipeline:
         if additional_context:
             self.context.update(additional_context)
 
-        executor = rclpy.create_node(f"{self.name}_pipeline_executor")
+        executor = rclpy.create_node(f"{self.name}_pipeline_executor", enable_rosout=False)
         failed = False
 
         for item in self.steps:
