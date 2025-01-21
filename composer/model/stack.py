@@ -295,7 +295,7 @@ class Stack():
         Returns:
             list: A list of active nodes.
         """
-        n = rclpy.create_node('get_active_nodes')
+        n = rclpy.create_node('get_active_nodes', enable_rosout=False)
         n_list = n.get_node_names_and_namespaces()
         n.destroy_node()
         return n_list
