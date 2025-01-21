@@ -55,6 +55,8 @@ class MutoComposer(Node):
         self.get_stack_cli = self.create_client(
             CoreTwin, f"{CORE_TWIN_NODE_NAME}/get_stack_definition"
         )
+        self.set_stack_cli = self.create_client(CoreTwin, f"{CORE_TWIN_NODE_NAME}/set_current_stack")
+
         self.current_stack = None
         self.next_stack = None  # Next stack to be processed
         self.method = None  # Action data coming from agent
@@ -76,7 +78,6 @@ class MutoComposer(Node):
         Bootstrap the device by activating the default stack.
         """
         try:
-            self.get_logger().info("Edge Device bootstrapping...")
             req = CoreTwin.Request()
             res = requests.get(
                 f"{self.twin_url}/api/2/things/{self.thing_id}/features/stack/properties/current",
@@ -105,7 +106,6 @@ class MutoComposer(Node):
                 self.publish_current_stack(resolved_stack)
                 self.publish_raw_stack(resolved_stack)
                 self.pipeline_execute("start")
-                self.get_logger().info("Edge Device bootstrap done.")
             else:
                 self.get_logger().error(
                     "No default stack received. Aborting bootstrap."
@@ -157,6 +157,8 @@ class MutoComposer(Node):
             req = CoreTwin.Request()
             req.input = stack_id
             future = self.get_stack_cli.call_async(req)
+            future2 = self.set_stack_cli.call_async(req)
+            future2.add_done_callback(self.set_stack_done_callback)
             future.add_done_callback(self.get_stack_done_callback)
         except json.JSONDecodeError as e:
             self.get_logger().error(f"Invalid JSON in payload: {e}")
@@ -164,6 +166,21 @@ class MutoComposer(Node):
             self.get_logger().error(f"Payload is missing key: {k}")
         except Exception as e:
             self.get_logger().error(f"Error parsing stack from agent: {e}")
+
+    def set_stack_done_callback(self, future):
+        """Callback function executed when the set_current_stack service call is completed."""
+        try:
+            result = future.result()
+            if result:
+                self.get_logger().info(
+                    "Edge device stack setting completed successfully."
+                )
+            else:
+                self.get_logger().warning(
+                    "Edge device stack setting failed. Please try your request again."
+                )
+        except Exception as e:
+            self.get_logger().error(f"Exception in set_stack_done_callback: {e}")
 
     def get_stack_done_callback(self, future):
         """
@@ -265,7 +282,6 @@ class MutoComposer(Node):
     def merge(self, current_stack: dict, next_stack: dict) -> dict:
         """
         Merge current and next stack dictionaries.
-        Placeholder implementation: override current stack with next stack's non-empty attributes.
 
         Args:
             current_stack (dict): The current stack data.
@@ -274,15 +290,12 @@ class MutoComposer(Node):
         Returns:
             dict: The merged stack data.
         """
+        if current_stack is None:
+            return next_stack
+
         stack_1 = Stack(manifest=current_stack)
         stack_2 = Stack(manifest=next_stack)
-        self.get_logger().info(f"Current stack: {stack_1.manifest}")  # TODO: They are the same for some reason
-        self.get_logger().info(f"Next stack: {stack_2.manifest}")
         merged = stack_1.merge(stack_2)
-        self.get_logger().info(
-            f"Merged current stack with next stack: {merged.manifest}"
-        )
-
         return merged.manifest
 
     def pipeline_execute(self, pipeline_name: str, additional_context: dict = None):
@@ -324,7 +337,7 @@ class MutoComposer(Node):
                     resolved_value = os.getenv(f"{var}", "")
                 elif expr == "arg":
                     self.get_logger().info(f"Parsing {expr}: {var}")
-                    resolved_value = self.incoming_stack.get("args", {}).get(var, "")
+                    resolved_value = self.current_stack.get("args", {}).get(var, "")
                     self.get_logger().info(f"Resolved arg: {resolved_value}")
                 else:
                     self.get_logger().info(
