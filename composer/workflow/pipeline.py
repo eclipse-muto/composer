@@ -113,25 +113,26 @@ class Pipeline:
 
                 try:
                     response = self.execute_step(step, executor)
+                    
                     if not response:
-                        raise Exception(
-                            "No response from the service call. The service might not be up yet."
-                        )
+                        response = type("Response", (), {"success": False, "err_msg": "No response from service."})()
+                        self.logger.error(f"Step {step_name} failed due to no response.")
+
+                    # Store the response in context regardless of success or failure
+                    self.context[step_name] = response  
 
                     if not response.success:
                         raise Exception(f"Step execution error: {response.err_msg}")
 
-                    self.context[step_name] = response  # Store the response in context
                     self.logger.info(f"Step passed: {step_name}")
 
                 except Exception as e:
-                    self.logger.warn(
-                        f"Step failed: {step_name}, Exception: {e}"
-                    )
+                    self.logger.warn(f"Step failed: {step_name}, Exception: {e}")
                     self.execute_compensation(executor)
                     failed = True
                     self.logger.error("Aborting the rest of the pipeline")
                     break
+
 
         executor.destroy_node()
 
