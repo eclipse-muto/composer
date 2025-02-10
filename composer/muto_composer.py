@@ -202,9 +202,6 @@ class MutoComposer(Node):
             else:
                 self.get_logger().warn("Received empty result from service call.")
         except Exception as e:
-            import traceback
-
-            traceback.print_exc()
             self.get_logger().warn(f"Service call failed: {e}")
 
     def publish_current_stack(self, stack: str):
