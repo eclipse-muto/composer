@@ -3,4 +3,5 @@
 __pycache__
 tmp
 build
-devel
+install
+log

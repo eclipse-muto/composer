@@ -1,20 +1,3 @@
-#
-#  Copyright (c) 2024 Composiv.ai, Eteration A.S. and others
-#
-# All rights reserved. This program and the accompanying materials
-# are made available under the terms of the Eclipse Public License v2.0
-# and Eclipse Distribution License v1.0 which accompany this distribution.
-#
-# The Eclipse Public License is available at
-#    http://www.eclipse.org/legal/epl-v10.html
-# and the Eclipse Distribution License is available at
-#   http://www.eclipse.org/org/documents/edl-v10.php.
-#
-# Contributors:
-#    Composiv.ai, Eteration A.S. - initial API and implementation
-#
-#
-
 import os
 import composer.model.param as param
 from lifecycle_msgs.msg import Transition, State
@@ -45,7 +28,7 @@ class Node:
         self.iff = manifest.get('if', '')
         self.unless = manifest.get('unless', '')
         self.action = manifest.get('action', '')
-        self.ros_params = [{key: value} for p in self.param for key, value in p.value.items()]
+        self.ros_params = [{key: value} for p in self.param if isinstance(p.value, dict) for key, value in p.value.items() ]
         self.remap_args = [(stack.resolve_expression(rm['from']), stack.resolve_expression(rm['to'])) for rm in self.remap]
 
     def toManifest(self):

@@ -1,134 +1,371 @@
+# Composer
 
-[![Catkin Make (Build and Test)](https://github.com/eclipse-muto/composer/actions/workflows/catkin-build.yml/badge.svg?branch=main)](https://github.com/eclipse-muto/composer/actions/workflows/catkin-build.yml)
+**Composer** is a ROS 2 package designed to organize and automate the software deployment process to a fleet of vehicles. It streamlines the workflow by managing stack definitions, resolving dependencies, handling buildjobs and orchestrating the execution of various pipelines.
 
-# Muto Composer
+## Table of Contents
 
-## Build
-After you checkout the repository, source your ROS environment and make sure the additional dependencies such as the eclipse paho mqtt client library is installed.
+- [Overview](#overview)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Configuration](#configuration)
+  - [Launching Composer](#launching-composer)
+- [Plugins](#plugins)
+  - [Adding a Plugin](#adding-a-plugin)
+- [Working with Stacks](#working-with-stacks)
+- [Introspection Tools](#introspection-tools)
+- [Blueprint](#blueprint)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgements](#acknowledgements)
 
-```bash
-source /opt/ros/humble/setup.bash
-pip3 install paho-mqtt celery requests
-```
+## Overview
 
-## Muto Twins
+Composer automates the deployment process of ROS2 systems by handling the orchestration of different services and plugins. It receives deployment actions from [Muto Agent](https://github.com/eclipse-muto/agent), processes stack definitions, resolves expressions from stacks, and executes pipelines to manage the lifecycle of software stacks on vehicles.
 
-Muto agent requires network connectivity to the Muto Twins (ditto) and MQTT servers. The address for the muto sandbox is: 
-* The twin servers and API: https://sandbox.composiv.ai/
-* The mqtt server: mqtt://sandbox.composiv.ai:1883
+This documentation provides an overview about Composer. Even though you could use Composer alone with some little tweaks, it was intended to be used with other parts of [`Eclipse Muto`](https://eclipse-muto.github.io/docs/docs/muto/). They could be found under [`Agent`](https://github.com/eclipse-muto/agent), [`Core`](https://github.com/eclipse-muto/core) and [`Messages`](https://github.com/eclipse-muto/agent). You could refer to [`Eclipse Muto`](https://eclipse-muto.github.io/docs/docs/muto/) documentation for a detailed guide on how to set Muto up for your use-case.
 
-## Running agent
+## Features
 
-The muto agent must be launched and the target device and the devices should have access to all the packages required to launch the stacks.  For these purposes you can either choose to run a containerized version of muto or launch it direct from the devices after all the packages (such as the muto learning modules) are build and installed on the AV.
+- **Automated Deployment Pipelines**: Define and execute custom deployment pipelines.
+- **Plugin Architecture**: Easily extend functionality with custom plugins.
+- **Software Stack Management**: Handle stack definitions, including cloning repositories, building workspaces, managing dependencies and updating/upgrading the stack.
+- **ROS 2 Integration**: Leverage ROS 2 services and messaging for communication between components.
+- **Introspection Tools**: Visualize and analyze launch descriptions and pipeline executions.
 
-```bash
-source install/setup.bash
-ros2 launch agent agent.launch
-```
+## Architecture
 
+The Composer package consists of the following main components:
 
-You can get stacks from twin server via::
-```bash
-curl 'link_to_stack_url'
-```
-which returns something similar to the below structure:
+- **Workflow**
+  - **Router**: Routes incoming actions to the appropriate pipeline.
+  - **Pipeline**: Manages the execution of sequences of steps defined in the pipeline configuration.
+- **Plugins**
+  - **Compose Plugin**: Parses and publishes stack manifests.
+  - **Native Plugin**: Handles workspace preparation, including cloning repositories and building.
+  - **Launch Plugin**: Manages the launching and killing of stacks.
+- **Introspection Tools**: Tools for visualizing and debugging launch descriptions and pipelines.
 
-```json
-{
-    "name": "Muto Learning Simulator with Gap Follwer",
-    "context": "eteration_office",
-    "stackId": "org.eclipse.muto.sandbox:f1tenth-multiagent-gym.launch",
-    "stack": [
-        {
-            "thingId": "org.eclipse.muto.sandbox:racecar1.launch"
-        }
-    ],
-    "node": [ 
-        {
-            "name": "reactive_gap_follower",
-            "pkg": "reactive_gap_follower",
-            "exec": "reactive_gap_follower",
-            "param": [
-              { "from": "$(find reactive_gap_follower)/params.yaml" }
-            ]
-        }
-    ]
-}
-```
-This is a stack with a single node, "cass_gap_follower".  However, it includes another stack (with many other nodes and parameters) that it requires with a stackId reference org.eclipse.muto.sandbox:f1tenth-multiagent-gym.launch. The elements of the stack model resembles a [ROS launch XML](https://wiki.ros.org/roslaunch/XML), so it should be fairly straightforward to understand if you have experience writing XML launch files
+For a detailed overview, refer to the [Architecture Documentation](docs/architecture.md).
 
-## Managing Stacks and Vehicles
+## Installation
 
-New stack can be easily stored on the sandbox server using the things API (put). See the ditto documentation for many examples [https://www.eclipse.org/ditto/intro-overview.html].  For example, to add a new stack to the repository we can use the thing PUT api as follows:
+### Prerequisites
+
+- **ROS 2 Foxy** or later installed on your system.
+- **Python 3.8** or later.
+- Ensure that you have `colcon` and `rosdep` installed for building and dependency management.
 
 ```bash
-$ curl -X PUT -H "Content-Type: application/json" -d ' 
-{ 
-    "name": "Muto Learning Simulator with Gap Follower", 
-    "context": "eteration_office",
-    "stackId": "org.eclipse.muto.sandbox:composiv_simulator_gf.launch", 
-    "stack": [
-        {
-            "thingId": "org.eclipse.muto.sandbox:composiv_simulator.launch"
-        }
-    ],
-    "node": [ 
-        {
-            "name": "cass_gap_follower",
-            "pkg": "cass_gap_follower",
-            "exec": "cass_gap_follower",
-            "param": [
-              { "from": "$(find cass_gap_follower)/params.yaml" }
-            ]
-        }
-    ]
-}
-' http://sandbox.composiv.ai/api/2/things/org.eclipse.muto.sandbox:composiv_simulator_gf.launch
+# Add ROS2 apt repository
+sudo sh -c 'echo "deb [arch=amd64,arm64] http://repo.ros2.org/ubuntu/main `lsb_release -cs` main" > /etc/apt/sources.list.d/ros2-latest.list'
+curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
 
+# Install colcon and rosdep
+sudo apt update
+sudo apt install python3-colcon-common-extensions python3-rosdep
 ```
 
-## Managing Stacks and Vehicles
-We can use the TWINS to directly communicating commands to the vehicle itself. The twin server supports special mqtt channels for these purposes called **twin** and **live** channels. For example the following command can be published to the sandbox MQTT server to activate a stack on a car.  Each vehicle has its dedicated **twin** and **live** channels:
+### Steps
 
-```yaml
-topic: org.eclipse.muto.sandbox::simulator-monster-01/stack/commands/active
-```
-```yaml
-payload: {
-    "name": "Muto Learning Simulator with Gap Follwer",
-    "context": "eteration_office",
-    "stackId": "org.eclipse.muto.sandbox::composiv_simulator_gf.launch",
-    "stack": [
-        {
-            "thingId": "org.eclipse.muto.sandbox::composiv_simulator.launch"
-        }
-    ],
-    "node": [ 
-        {
-            "name": "cass_gap_follower",
-            "pkg": "cass_gap_follower",
-            "exec": "cass_gap_follower",
-            "param": [
-              { "from": "$(find cass_gap_follower)/params.yaml" }
-            ]
-        }
-    ]
-}
-```
+1. **Clone the Repository**
 
-You can use any open-source mqtt client to issue these commands and monitor various muto twin messages [MQTTX](https://mqttx.app/). Another option is the [mosquitto_pub](https://mosquitto.org/man/mosquitto_pub-1.html), which is a simple MQTT version 5/3.1.1 client that will publish a single message on a topic and exit.  You can publish the message described above using the commandline:
+   ```bash
+   cd $HOME
+   mkdir -p muto/src
+   cd muto/src
+   git clone https://github.com/eclipse-muto/agent.git
+   git clone https://github.com/eclipse-muto/core.git
+   git clone https://github.com/eclipse-muto/composer.git
+   git clone https://github.com/eclipse-muto/messages.git
+   ```
+
+2. **Install Dependencies**
+
+   Use `rosdep` to install dependencies:
+
+   ```bash
+   cd $HOME/muto
+   rosdep update
+   rosdep install --from-paths src --ignore-src -r -y
+   ```
+
+3. **Build the Package**
+
+   Use `colcon` to build the package:
+
+   ```bash
+   $HOME/muto
+   colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+   ```
+## Usage
+
+### Configuration
+- For a better workflow, you need to create 2 files: `muto.yaml`, and `muto.launch.py`
+
 
 ```bash
-  mosquitto_pub -d -h sandbox.composiv.ai -p 1883  -t "org.eclipse.muto.sandbox::simulator-monster-01/stack/commands/active" -m '{"name":"Composiv Learning Simulator with Gap Follwer","context":"eteration_office","stackId":"org.eclipse.muto.sandbox::composiv_simulator_gf.launch","stack":[{"thingId":"org.eclipse.muto.sandbox::composiv_simulator.launch"}],"node":[{"name":"cass_gap_follower","pkg":"cass_gap_follower","exec":"cass_gap_follower","param":[{"from":"$(find cass_gap_follower)/params.yaml"}]}]}'
+cd $HOME/muto
+mkdir config/ && cd config/
+# Create the below muto.yaml file under this config directory
+```
+`muto.yaml`:
+```diff
+/**:
+  ros__parameters:
+    stack_topic: "stack"
+    twin_topic: "twin"
+    agent_to_gateway_topic: "agent_to_gateway"
+    gateway_to_agent_topic: "gateway_to_agent"
+    agent_to_commands_topic: "agent_to_command"
+    commands_to_agent_topic: "command_to_agent"
+    thing_messages_topic: "thing_messages"
+    - ignored_packages: ["package1", "package3"]  # the packages in this list will be ignored in the build phase
+    + ignored_packages: ["package2", "package4"]
+
+    twin_url: "http://ditto:ditto@sandbox.composiv.ai"
+    host: sandbox.composiv.ai
+    port: 1883
+    keep_alive: 60
+    user: null
+    password: null
+    anonymous: false
+    type: real_car
+    attributes: '{"brand": "muto", "model": "composer"}'
+    prefix: muto
+    namespace: org.eclipse.muto.sandbox
+    name: composer-guy
+
+    commands:
+      command1:
+        name: ros/topic
+        service: rostopic_list
+        plugin: CommandPlugin
+
+      command2:
+        name: ros/topic/info
+        service: rostopic_info
+        plugin: CommandPlugin
+
+      command3:
+        name: ros/topic/echo
+        service: rostopic_echo
+        plugin: CommandPlugin
+
+      command4:
+        name: ros/node
+        service: rosnode_list
+        plugin: CommandPlugin
+
+      command5:
+        name: ros/node/info
+        service: rosnode_info
+        plugin: CommandPlugin
+
+      command6:
+        name: ros/param
+        service: rosparam_list
+        plugin: CommandPlugin
+
+      command7:
+        name: ros/param/get
+        service: rosparam_get
+        plugin: CommandPlugin
 
 ```
-
-
-## Controlling the F1Tenth Car (navigate on/off) 
 
 ```bash
-ros2 topic pub --once /mux std_msgs/Int32MultiArray "{layout: { dim: [], data_offset: 0}, data: [0, 0, 0, 0, 1 , 0] }"
+cd $HOME/muto
+mkdir launch/ && cd launch/
+# Create the below muto.launch.py file under this launch directory
+```
+`muto.launch.py`:
+```python
+from launch import LaunchDescription
+from launch_ros.actions import Node
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+
+
+def generate_launch_description():
+    muto_namespace_arg = DeclareLaunchArgument(
+        "muto_namespace",
+        default_value="muto"
+    )
+
+    muto_params = "./config/muto.yaml"
+
+    node_agent = Node(
+        namespace=LaunchConfiguration("muto_namespace"),
+        name="agent",
+        package="agent",
+        executable="muto_agent",
+        output="screen",
+        parameters=[muto_params]
+    )
+
+    node_mqtt_gateway = Node(
+        namespace=LaunchConfiguration("muto_namespace"),
+        name="gateway",
+        package="agent",
+        executable="mqtt",
+        output="screen",
+        parameters=[muto_params]
+    )
+
+    node_commands = Node(
+        namespace=LaunchConfiguration("muto_namespace"),
+        name="commands_plugin",
+        package="agent",
+        executable="commands",
+        output="screen",
+        parameters=[muto_params]
+    )
+
+    node_twin = Node(
+        namespace=LaunchConfiguration("muto_namespace"),
+        name="core_twin",
+        package="core",
+        executable="twin",
+        output="screen",
+        parameters=[muto_params]
+    )
+
+    node_composer = Node(
+        namespace=LaunchConfiguration("muto_namespace"),
+        package="composer",
+        executable="muto_composer",
+        output="screen",
+        parameters=[muto_params]
+    )
+
+    node_compose_plugin = Node(
+        namespace=LaunchConfiguration("muto_namespace"),
+        package="composer",
+        executable="compose_plugin",
+        output="screen",
+        parameters=[
+            muto_params,
+            {"names": LaunchConfiguration("vehicle_id_namespace")},
+            {"name": LaunchConfiguration("vehicle_id")}
+        ]
+    )
+
+    node_native_plugin = Node(
+        namespace=LaunchConfiguration("muto_namespace"),
+        package="composer",
+        executable="native_plugin",
+        output="screen",
+         parameters=[muto_params]
+    )
+
+    node_launch_plugin = Node(
+        namespace=LaunchConfiguration("muto_namespace"),
+        package="composer",
+        executable="launch_plugin",
+        output="screen",
+        parameters=[muto_params]
+    )
+
+
+    ld = LaunchDescription()
+
+    ld.add_action(muto_namespace_arg)
+    
+    ld.add_action(node_agent)
+    ld.add_action(node_mqtt_gateway)
+    ld.add_action(node_commands)
+    ld.add_action(node_twin)
+    ld.add_action(node_composer)
+    ld.add_action(node_compose_plugin)
+    ld.add_action(node_native_plugin)
+    ld.add_action(node_launch_plugin)
+
+    return ld
+
 ```
 
-## More information
-Check out the Eclipse Muto github.io page for further reading: [Eclipse Muto](https://eclipse-muto.github.io/docs/docs/muto)
+- Composer uses a configuration file `pipeline.yaml` located in the `composer/config` directory to define the pipelines and their steps. Ensure that this file is properly configured to suit your deployment needs.
+
+### Launching
+
+To start `Muto` as a whole (including `composer`):
+
+```bash
+cd $HOME/muto
+source /opt/ros/$ROS_DISTRO/setup.bash && source install/local_setup.bash
+ros2 launch launch/muto.launch.py
+```
+
+### Sending Deployment Actions
+
+Composer listens for `MutoAction` messages on the specified stack topic (default is `stack`). You can send deployment actions (e.g., start, kill, apply) to Composer using `Agent` or via a ROS2 CLI tool `ros2 topic pub`.
+
+```bash
+ros2 topic pub ...
+```
+
+
+## Plugins
+
+Composer's functionality can be extended through plugins. The default plugins included are:
+
+- **Compose Plugin**: Processes incoming stacks and publishes composed stacks.
+- **Native Plugin**: Handles cloning repositories, checking out branches, and building workspaces.
+- **Launch Plugin**: Manages the starting and stopping of stacks, including running launch files or scripts.
+
+### Adding a Plugin
+
+To add a new plugin:
+
+1. **Create the Plugin File**
+
+   Place your plugin in the `plugins` directory.
+
+2. **Define the Service Interface**
+
+   Ensure your plugin has a corresponding service definition in `muto_msgs/srv`.
+
+3. **Update the Pipeline Configuration**
+
+   Add your plugin to the `pipeline.yaml` configuration file.
+
+For detailed instructions, refer to the [Adding a Plugin Guide](docs/adding-a-plugin.md).
+
+## Working with Stacks
+
+Stacks are central to Composer's deployment process. A stack definition includes information such as:
+
+- Repository URL and branch
+- Launch description source
+- Scripts to run on start and kill
+- Arguments and environment variables
+
+Ensure your stack definitions are correctly formatted and accessible to Composer.
+
+Refer to the [Working with Stacks Guide](docs/working-with-stacks.md) for more information.
+
+## Introspection Tools
+
+Composer provides tools for introspection and debugging:
+
+- **Launch Description Visualizer**: Visualize the structure of your launch descriptions.
+- **Pipeline Execution Monitor**: Monitor the execution of pipelines and steps.
+
+Refer to the [Introspection Tools Documentation](docs/launch.md) for usage instructions.
+
+## Blueprint
+
+## Contributing
+
+Contributions are welcome! Makse sure you follow the [coding guidelines](https://github.com/ibrahimsel/composer/wiki/Coding-Guidelines) that were specified in the project wiki as much as you could.
+
+## License
+
+This project is licensed under the [EPL v2.0](LICENSE).
+
+## Acknowledgements
+
+- **ROS 2 Community**: For providing an excellent framework for robotic software development.
+- **Contributors**: Thanks to all the contributors who have helped improve Composer.

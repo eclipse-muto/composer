@@ -2,29 +2,20 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>composer</name>
-  <version>0.0.0</version>
-  <description>Eclipse Muto's Composer component that is responsible for the lifecycle of ROS Nodes</description>
-
-  <!-- One maintainer tag required, multiple allowed, one person per tag -->
-  <!-- Example:  -->
-  <!-- <maintainer email="jane.doe@example.com">Jane Doe</maintainer> -->
-  <maintainer email="info@composiv.ai">Composiv</maintainer>
-
-  <!-- One license tag required, multiple allowed, one license per tag -->
-  <!-- Commonly used license strings: -->
-  <!--   BSD, MIT, Boost Software License, GPLv2, GPLv3, LGPLv2.1, LGPLv3 -->
-  <license>EPL</license>
-
+  <version>0.2.0</version>
+  <description>Composer provides orchestration utilites for ROS2 environment</description>
+  <maintainer email="info@composiv.ai">composiv.ai</maintainer>
+  <license>Eclipse Public License</license>
+  
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>
   <test_depend>python3-pytest</test_depend>
+  <test_depend>ament_cmake_pytest</test_depend>
+  
 
-  <depend>rclpy</depend>
-  <depend>ros2launch</depend>
-  <depend>muto_msgs</depend>
-  <depend>python-paho-mqtt-pip</depend>
-
+  <build_depend>python3-jsonschema</build_depend>
+  <exec_depend>python3-jsonschema</exec_depend>
   <export>
     <build_type>ament_python</build_type>
   </export>

@@ -1,24 +1,6 @@
-#
-#  Copyright (c) 2024 Composiv.ai, Eteration A.S. and others
-#
-# All rights reserved. This program and the accompanying materials
-# are made available under the terms of the Eclipse Public License v2.0
-# and Eclipse Distribution License v1.0 which accompany this distribution.
-#
-# The Eclipse Public License is available at
-#    http://www.eclipse.org/legal/epl-v10.html
-# and the Eclipse Distribution License is available at
-#   http://www.eclipse.org/org/documents/edl-v10.php.
-#
-# Contributors:
-#    Composiv.ai, Eteration A.S. - initial API and implementation
-#
-#
-
 import subprocess
 import os
 import re
-import uuid
 import composer.model.node as node
 import composer.model.param as param
 import composer.model.composable as composable
@@ -30,7 +12,7 @@ from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
 from ament_index_python.packages import get_package_share_directory
 
-NOACTION = 'none'
+NOACTION = 'none'  # possibly PARAMACTION sometime in the future
 STARTACTION = 'start'
 STOPACTION = 'stop'
 LOADACTION = 'load'
@@ -39,18 +21,16 @@ LOADACTION = 'load'
 class Stack():
     """The class that contains all stack related operations (apply, kill, stack, merge etc.)"""
 
-    def __init__(self, edge_device, manifest={}, parent=None):
+    def __init__(self, manifest={}, parent=None):
         """Initialize the Stack object.
 
         Args:
-            edge_device (object): The edge device object.
             manifest (dict, optional): The manifest dictionary containing stack details. Defaults to {}.
             parent (object, optional): The parent stack object. Defaults to None.
         """
 
         self.manifest = manifest
         self.parent = parent
-        self.edge_device = edge_device
         self.name = manifest.get('name', '')
         self.context = manifest.get('context', '')
         self.stackId = manifest.get('stackId', '')
@@ -64,25 +44,15 @@ class Stack():
 
         self.initialize()
 
-    def resolve_namespace(self):
-        """Resolve the namespace for the stack.
-
-        Returns:
-            str: The resolved namespace for the stack.
-        """
-        ns_prefix = '/' if not self.namespace.startswith('/') else ''
-        ns_suffix = '/' if not self.namespace.endswith('/') else ''
-        return f"{ns_prefix}{self.namespace}{ns_suffix}{self.name}/"
-
     def initialize(self):
         """Initialize the stack elements (nodes, composable nodes, parameters etc.)"""
 
         self.stack = []
         referenced_stacks = self.manifest.get('stack', [])
-        for stackRef in referenced_stacks:
-            stackDef = self.edge_device.stack(stackRef['thingId'])
-            stack = Stack(self.edge_device, stackDef, self)
-            self.stack.append(stack)
+        # for stackRef in referenced_stacks:
+            # stackDef = self.edge_device.stack(stackRef['thingId'])  # TODO: Replace with the twin service call
+            # stack = Stack(stackDef, self)
+            # self.stack.append(stack)
 
         self.node = []
         for nDef in self.manifest.get('node', []):
@@ -235,12 +205,11 @@ class Stack():
             Stack: The merged stack object.
         """
 
-        merged = Stack(self.edge_device, manifest={}, parent=None)
+        merged = Stack(manifest={}, parent=None)
         self._merge_attributes(merged, other)
         self._merge_nodes(merged, other)
         self._merge_composables(merged, other)
         self._merge_params(merged, other)
-        self._handle_different_stacks(merged, other)
 
         merged.manifest = merged.toManifest()
         return merged
@@ -326,62 +295,10 @@ class Stack():
         Returns:
             list: A list of active nodes.
         """
-        n = rclpy.create_node('get_active_nodes')
+        n = rclpy.create_node('get_active_nodes', enable_rosout=False)
         n_list = n.get_node_names_and_namespaces()
         n.destroy_node()
         return n_list
-
-    def _handle_different_stacks(self, merged, other):
-        """Handle differences between stacks during merge.
-
-        Args:
-            merged (Stack): The merged stack object.
-            other (Stack): The other stack object.
-        """
-        try:
-            referenced_stacks = self.manifest.get('stack', [])
-            other_referenced_stacks = other.manifest.get('stack', [])
-            self.different_stacks = self._identify_different_stacks(
-                referenced_stacks, other_referenced_stacks)
-
-            for stack_pair in self.different_stacks:
-                param_difference = self.calculate_ros_params_differences(
-                    stack_pair[0], stack_pair[1])
-                self.change_params_at_runtime(param_difference)
-
-            param_difference = self.calculate_ros_params_differences(
-                other, self)
-            # TODO move param change to launch phase
-            self.change_params_at_runtime(param_difference)
-        except Exception as e:
-            print(
-                f"Exception while calculating parameter difference between stacks: {e}")
-
-    def _identify_different_stacks(self, referenced_stacks, other_referenced_stacks):
-        """Identify different stacks between referenced stacks and other referenced stacks.
-
-        Args:
-            referenced_stacks (list): List of referenced stacks.
-            other_referenced_stacks (list): List of referenced stacks from another stack.
-
-        Returns:
-            list: List of different stacks.
-        """
-        different_stacks = []
-        for i in other_referenced_stacks:
-            if i not in referenced_stacks:
-                different_stackDef = self.edge_device.stack(i['thingId'])
-                different_stack = Stack(
-                    self.edge_device, different_stackDef, self)
-                for j in referenced_stacks:
-                    if j not in other_referenced_stacks:
-                        different_stack_def2 = self.edge_device.stack(
-                            j['thingId'])
-                        different_stack2 = Stack(
-                            self.edge_device, different_stack_def2, self)
-                        different_stacks.append(
-                            [different_stack, different_stack2])
-        return different_stacks
 
     def kill_all(self, launcher):
         """Kill all active nodes which were launched by Muto.
@@ -489,11 +406,7 @@ class Stack():
         active_nodes = [(active[1] if active[1] != '/' else '') +
                         '/' + active[0] for active in self.get_active_nodes()]
         
-        for i in active_nodes:
-            print("ACTIVE NODES: ", i)
-        
-        should_node_run = f'/{node.namespace}/{node.name}' not in active_nodes 
-        print(f'/{node.namespace}/{node.name} should run: {should_node_run}')
+        should_node_run = f'{node.namespace}/{node.name}' not in active_nodes 
         return should_node_run
 
     def load_common_composables(self, container, launch_description: LaunchDescription):
@@ -511,7 +424,6 @@ class Stack():
                     namespace=cn.namespace,
                     plugin=cn.plugin
                 ))
-        print(f'Node DESC: {node_desc}')
 
         if node_desc:
             load_action = LoadComposableNodes(
@@ -635,9 +547,6 @@ class Stack():
                     arg_value = self.arg.get(var)
                     if arg_value is not None:
                         resolved_value = arg_value['value']
-                elif expr == 'anon':
-                    resolved_value = self.anon.get(var, var + uuid.uuid1().hex)
-                    self.anon[var] = resolved_value
                 elif expr == 'eval':
                     raise NotImplementedError(
                         f"Value: {value} is not supported in Muto")
