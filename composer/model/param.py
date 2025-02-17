@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2023 Composiv.ai, Eteration A.S. and others
+#  Copyright (c) 2025 Composiv.ai, Eteration A.S. and others
 #
 # All rights reserved. This program and the accompanying materials
 # are made available under the terms of the Eclipse Public License v2.0
@@ -12,7 +12,6 @@
 #
 # Contributors:
 #    Composiv.ai, Eteration A.S. - initial API and implementation
-#
 #
 
 import subprocess
