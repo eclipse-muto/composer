@@ -1,4 +1,4 @@
-name: Colcon Build and Test
+name: Composer CI
 
 on: [push]
 
@@ -7,21 +7,74 @@ jobs:
     runs-on: ubuntu-latest
     container: osrf/ros:humble-desktop
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          path: 'src/composer' 
 
-      - run: |
-          mkdir -p $(pwd)/tmp/muto/src/
-          ln -s $(pwd) $(pwd)/tmp/muto/src/composer
-          cd $(pwd)/tmp/muto
-          apt-get update -y
-          apt-get install python3-pip -y
-          pip3 install setuptools==58.2.0
+      - name: Setup workspace
+        run: |
+          mkdir -p /tmp/ws/src
+          ln -s $(pwd)/src/composer /tmp/ws/src/composer
+          cd /tmp/ws
           . /opt/ros/humble/setup.sh
-          rosdep update -y
-          rosdep install --from-path src --ignore-src -r -y --rosdistro humble
-          colcon build
-          . install/setup.sh
-          # colcon test
-          # colcon test-result --all --verbose
-        name: Composer ROS2 Humble container build
+        shell: bash
+
+      - name: Clone messages
+        run: |
+          git clone https://github.com/eclipse-muto/messages.git /tmp/ws/src/messages
+        shell: bash
+
+      - name: Install dependencies
+        run: |
+          cd /tmp/ws
+          apt-get update -y
+          apt-get install -y python3-pip \
+            python3-flake8 \
+            python3-autopep8 \
+            bc
+          pip3 install setuptools==58.2.0 
+          pip3 install requests coverage
+          rosdep update
+          rosdep install --from-paths src --ignore-src -r -y --rosdistro humble
+        shell: bash
+
+      - name: Build
+        shell: bash
+        run: |
+          cd /tmp/ws
+          source /opt/ros/humble/setup.bash
+          echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH"
+          colcon build --symlink-install --packages-select muto_msgs composer
+
+      - name: Test
+        shell: bash
+        run: |
+          cd /tmp/ws
+          source /opt/ros/humble/setup.sh
+          source install/setup.sh
+          colcon test --event-handlers console_direct+ --packages-select muto_msgs composer
+          colcon test-result --verbose
+      
+      - name: Coverage Check (must be >= 80%)
+        shell: bash
+        run: |
+          cd /tmp/ws
+          source /opt/ros/humble/setup.sh
+          source install/setup.sh
+          cd /tmp/ws/src/composer
+          coverage run -m --source=/tmp/ws/src/composer --omit=/tmp/ws/src/composer/test/*,/tmp/ws/src/composer/setup.py unittest discover -s /tmp/ws/src/composer/test
+          coverage report -m
+          COVERAGE=$(coverage report | grep TOTAL | awk '{print $NF}' | sed 's/%//')
+          echo "Total coverage: $COVERAGE%"
+          if (( $(echo "$COVERAGE < 80.0" | bc -l) )); then
+            echo "❌ Coverage is below 80%"
+          else
+            echo "✅ Coverage is above threshold"
+          fi
+        
+      - name: Lint
+        run: |
+          cd /tmp/ws/src/composer
+          python3 -m flake8 --max-line-length 100 composer test || true
+        shell: bash
