@@ -4,21 +4,26 @@
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Installation](#installation)
-- [Usage](#usage)
-  - [Configuration](#configuration)
-  - [Launching Composer](#launching-composer)
-- [Plugins](#plugins)
-  - [Adding a Plugin](#adding-a-plugin)
-- [Working with Stacks](#working-with-stacks)
-- [Introspection Tools](#introspection-tools)
-- [Blueprint](#blueprint)
-- [Contributing](#contributing)
-- [License](#license)
-- [Acknowledgements](#acknowledgements)
+- [Composer](#composer)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Features](#features)
+  - [Architecture](#architecture)
+  - [Installation](#installation)
+    - [Prerequisites](#prerequisites)
+    - [Steps](#steps)
+  - [Usage](#usage)
+    - [Configuration](#configuration)
+    - [Launching](#launching)
+    - [Sending Deployment Actions](#sending-deployment-actions)
+  - [Plugins](#plugins)
+    - [Adding a Plugin](#adding-a-plugin)
+  - [Working with Stacks](#working-with-stacks)
+  - [Introspection Tools](#introspection-tools)
+  - [Blueprint](#blueprint)
+  - [Contributing](#contributing)
+  - [License](#license)
+  - [Acknowledgements](#acknowledgements)
 
 ## Overview
 
@@ -359,7 +364,7 @@ Refer to the [Introspection Tools Documentation](docs/launch.md) for usage instr
 
 ## Contributing
 
-Contributions are welcome! Makse sure you follow the [coding guidelines](https://github.com/ibrahimsel/composer/wiki/Coding-Guidelines) that were specified in the project wiki as much as you could.
+Contributions are welcome! Makse sure you follow the [coding guidelines](./CODING_GUIDELINES.md) that were specified in the project wiki as much as you could.
 
 ## License
 
