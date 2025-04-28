@@ -299,6 +299,172 @@ class TestMutoComposer(unittest.TestCase):
             "test_name", "test_pipeline", "test_compensation"
         )
 
+    @patch("builtins.open")
+    def test_load_pipeline_config_valid(self, mock_open):
+        valid_config = {
+            "pipelines": [
+                {
+                    "name": "test_pipeline",
+                    "pipeline": ["action1", "action2"],
+                    "compensation": ["undo1"],
+                }
+            ]
+        }
+        with patch("yaml.safe_load", return_value=valid_config), patch(
+            "composer.muto_composer.validate"
+        ) as mock_validate:
+            config = self.node.load_pipeline_config("dummy_path")
+            mock_validate.assert_called_once_with(
+                instance={
+                    "pipelines": [
+                        {
+                            "name": "test_pipeline",
+                            "pipeline": ["action1", "action2"],
+                            "compensation": ["undo1"],
+                        }
+                    ]
+                },
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "pipelines": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "pipeline": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "sequence": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "name": {"type": "string"},
+                                                            "service": {
+                                                                "type": "string"
+                                                            },
+                                                            "plugin": {
+                                                                "type": "string"
+                                                            },
+                                                            "condition": {
+                                                                "type": "string"
+                                                            },
+                                                        },
+                                                        "required": [
+                                                            "name",
+                                                            "service",
+                                                            "plugin",
+                                                        ],
+                                                    },
+                                                }
+                                            },
+                                            "required": ["sequence"],
+                                        },
+                                    },
+                                    "compensation": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "service": {"type": "string"},
+                                                "plugin": {"type": "string"},
+                                            },
+                                            "required": ["service", "plugin"],
+                                        },
+                                    },
+                                },
+                                "required": ["name", "pipeline", "compensation"],
+                            },
+                        }
+                    },
+                    "required": ["pipelines"],
+                },
+            )
+            self.assertIn("pipelines", config)
+            self.assertEqual(len(config["pipelines"]), 1)
+
+    @patch.object(MutoComposer, "get_logger")
+    def test_set_stack_done_callback(self, mock_get_logger):
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+        future = MagicMock()
+        self.node.set_stack_done_callback(future)
+        mock_logger.info.assert_called_with(
+            "Edge device stack setting completed successfully."
+        )
+
+    @patch.object(MutoComposer, "get_logger")
+    def test_set_stack_done_callback_exception(self, mock_get_logger):
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+        future = MagicMock()
+        future.result = None
+        self.node.set_stack_done_callback(future)
+        mock_logger.error.assert_called_with(
+            "Exception in set_stack_done_callback: 'NoneType' object is not callable"
+        )
+
+    def test_publish_current_stack(self):
+        test_stack = '{"test": "stack"}'
+        with patch.object(self.node.current_stack_publisher, "publish") as mock_pub:
+            self.node.publish_current_stack(test_stack)
+            mock_pub.assert_called_once()
+            published_msg = mock_pub.call_args[0][0]
+            self.assertEqual(published_msg.data, test_stack)
+
+    def test_publish_next_stack(self):
+        test_stack = '{"next": "stack"}'
+        with patch.object(self.node.next_stack_publisher, "publish") as mock_pub:
+            self.node.publish_next_stack(test_stack)
+            mock_pub.assert_called_once()
+            published_msg = mock_pub.call_args[0][0]
+            self.assertEqual(published_msg.data, test_stack)
+
+    def test_determine_execution_path_empty_next_stack(self):
+        self.node.current_stack = {"launch_description_source": "existing"}
+        self.node.next_stack = json.dumps({"launch_description_source": "new_launch"})
+        self.node.pipeline_execute = MagicMock()
+
+        self.node.determine_execution_path()
+
+        self.node.pipeline_execute.assert_called_once_with(
+            self.node.method, {"should_run_native": True, "should_run_launch": True}
+        )
+
+    @patch("composer.muto_composer.Stack")
+    def test_merge(self, mock_stack):
+        stack1 = {"node": ["node1"], "composable": ["comp1"]}
+        stack2 = {"node": ["node2"], "args": {"arg1": "value1"}}
+
+        merged = self.node.merge(stack1, stack2)
+
+        self.assertEqual(mock_stack.call_count, 2)
+
+        merged = self.node.merge(None, stack2)
+        self.assertEqual(merged, stack2)
+
+    def test_pipeline_execute_valid(self):
+        test_pipeline = MagicMock()
+        self.node.pipelines = {"test_pipeline": test_pipeline}
+        self.node.pipeline_execute("test_pipeline", {"key": "value"})
+        test_pipeline.execute_pipeline.assert_called_once_with(
+            additional_context={"key": "value"}
+        )
+
+    @patch.object(MutoComposer, "get_logger")
+    def test_pipeline_execute_invalid(self, mock_get_logger):
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+        self.node.pipelines = {}
+        self.node.pipeline_execute("invalid_pipeline")
+        mock_logger.warn.assert_called_with(
+            "No pipeline found with name: invalid_pipeline"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
