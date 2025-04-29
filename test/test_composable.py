@@ -13,7 +13,6 @@
 
 import unittest
 from unittest.mock import MagicMock, patch
-import rclpy
 from composer.model.composable import Container
 
 
