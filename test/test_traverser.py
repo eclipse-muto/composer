@@ -1,11 +1,27 @@
+#
+# Copyright (c) 2025 Composiv.ai
+#
+# This program and the accompanying materials are made available under the
+# terms of the Eclipse Public License 2.0 which is available at
+# http://www.eclipse.org/legal/epl-2.0.
+#
+# SPDX-License-Identifier: EPL-2.0
+#
+# Contributors:
+#   Composiv.ai - initial API and implementation
+#
+
 import unittest
 
 from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
 
-from composer.introspection.traverser import recursively_extract_entities, resolve_substitutions
+from composer.introspection.traverser import (
+    recursively_extract_entities,
+    resolve_substitutions,
+)
 from launch import LaunchContext
-from launch.actions import (DeclareLaunchArgument, GroupAction)
+from launch.actions import DeclareLaunchArgument, GroupAction
 from launch.substitutions import LaunchConfiguration, TextSubstitution
 
 
