@@ -87,7 +87,6 @@ class TestLaunchPlugin(unittest.TestCase):
         )
         self.node.get_stack(mock_stack_manifest)
 
-
     @patch("composer.plugins.launch_plugin.StackManifest")
     def test_get_stack_exception(self, mock_stack_manifest):
         mock_stack_manifest = "exception_test_string"
@@ -333,7 +332,8 @@ class TestLaunchPlugin(unittest.TestCase):
         mock_run_script.assert_not_called()
         self.assertFalse(response.success)
         self.assertEqual(
-            response.err_msg, "the JSON object must be str, bytes or bytearray, not MagicMock"
+            response.err_msg,
+            "the JSON object must be str, bytes or bytearray, not MagicMock",
         )
 
     @patch("subprocess.run")
@@ -380,7 +380,6 @@ class TestLaunchPlugin(unittest.TestCase):
         mock_run.assert_called_once_with(
             ["/mock/script/path"], check=True, capture_output=True, text=True
         )
-
 
     @patch("composer.plugins.launch_plugin.CoreTwin")
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
@@ -481,7 +480,6 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertFalse(response.success)
         self.assertEqual(response.err_msg, "Script not found: True")
 
-
     @patch("composer.plugins.launch_plugin.CoreTwin")
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_kill_no_current_stack(self, mock_launch_plugin, mock_core_twin):
@@ -511,10 +509,10 @@ class TestLaunchPlugin(unittest.TestCase):
 
         self.node.handle_apply(request, response)
 
-        mock_stack.assert_called_once_with(manifest={'stack_name': 'mock_stack_name'})
+        mock_stack.assert_called_once_with(manifest={"stack_name": "mock_stack_name"})
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
-        
+
     @patch("composer.plugins.launch_plugin.Stack")
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_apply_exception(self, mock_launch_plugin, mock_stack):
@@ -527,8 +525,12 @@ class TestLaunchPlugin(unittest.TestCase):
         self.node.handle_apply(request, response)
 
         self.assertFalse(response.success)
-        self.assertEqual(response.err_msg, "the JSON object must be str, bytes or bytearray, not MagicMock")
+        self.assertEqual(
+            response.err_msg,
+            "the JSON object must be str, bytes or bytearray, not MagicMock",
+        )
         mock_stack.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -45,7 +45,6 @@ class TestComposePlugin(unittest.TestCase):
         self.node.handle_raw_stack(stack_msg)
         self.assertEqual(self.node.incoming_stack, json.loads(stack_msg.data))
 
-
     @patch.object(MutoDefaultComposePlugin, "parse_stack")
     def test_publish_composed_stack(self, mock_parse_stack):
         self.node.incoming_stack = "MockStack"
@@ -71,7 +70,6 @@ class TestComposePlugin(unittest.TestCase):
         self.assertEqual(response.err_msg, "")
         mock_publish_composed_stack.assert_called_once()
 
-
     @patch("composer.plugins.compose_plugin.ComposePlugin")
     @patch.object(MutoDefaultComposePlugin, "publish_composed_stack")
     def test_handle_compose_start_not_set(
@@ -90,7 +88,11 @@ class TestComposePlugin(unittest.TestCase):
             "Start flag not set in compose request."
         )
 
-    @patch.object(MutoDefaultComposePlugin, "publish_composed_stack", side_effect=Exception("dummy_exception"))
+    @patch.object(
+        MutoDefaultComposePlugin,
+        "publish_composed_stack",
+        side_effect=Exception("dummy_exception"),
+    )
     @patch("composer.plugins.compose_plugin.ComposePlugin")
     def test_handle_compose_exception(self, mock_compose_plugin, mock_publish):
         request = mock_compose_plugin.Request()

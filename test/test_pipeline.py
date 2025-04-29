@@ -148,16 +148,19 @@ class TestPipeline(unittest.TestCase):
         pipeline.execute_pipeline(additional_context=context)
 
         self.assertIn(
-            "compose_step", pipeline.context, 
-            "compose_step should be recorded in pipeline.context"
+            "compose_step",
+            pipeline.context,
+            "compose_step should be recorded in pipeline.context",
         )
         self.assertNotIn(
-            "native_step", pipeline.context, 
-            "native_step should not run, so not in pipeline.context"
+            "native_step",
+            pipeline.context,
+            "native_step should not run, so not in pipeline.context",
         )
         self.assertNotIn(
-            "launch_step", pipeline.context, 
-            "launch_step should not run, so not in pipeline.context"
+            "launch_step",
+            pipeline.context,
+            "launch_step should not run, so not in pipeline.context",
         )
 
     @patch("importlib.import_module")
@@ -189,12 +192,16 @@ class TestPipeline(unittest.TestCase):
                 future_mock.result.return_value = MagicMock(success=True, err_msg="")
             elif service_name == "muto_native":
                 # native_step => fails
-                future_mock.result.return_value = MagicMock(success=False, err_msg="Native error")
+                future_mock.result.return_value = MagicMock(
+                    success=False, err_msg="Native error"
+                )
             elif service_name == "muto_kill_stack":
                 # kill_step => success
                 future_mock.result.return_value = MagicMock(success=True, err_msg="")
             else:
-                future_mock.result.return_value = MagicMock(success=True, err_msg="Unreached")
+                future_mock.result.return_value = MagicMock(
+                    success=True, err_msg="Unreached"
+                )
 
             client_mock.call_async.return_value = future_mock
             return client_mock
@@ -261,7 +268,11 @@ class TestPipeline(unittest.TestCase):
         ]
 
         compensation_config = [
-            {"name": "kill_step", "service": "muto_kill_stack", "plugin": "LaunchPlugin"}
+            {
+                "name": "kill_step",
+                "service": "muto_kill_stack",
+                "plugin": "LaunchPlugin",
+            }
         ]
 
         pipeline = Pipeline(
