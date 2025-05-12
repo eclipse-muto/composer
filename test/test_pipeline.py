@@ -55,10 +55,7 @@ class TestPipeline(unittest.TestCase):
 
     @patch("importlib.import_module")
     def test_load_plugins_success(self, mock_import_module):
-        """
-        Test that plugins are loaded successfully if they exist in the imported module.
-        """
-        # Mock the module returned by import_module
+
         mock_plugin_class = MagicMock()
         mock_import_module.return_value = MagicMock(
             ComposePlugin=mock_plugin_class,
@@ -66,14 +63,12 @@ class TestPipeline(unittest.TestCase):
             LaunchPlugin=mock_plugin_class,
         )
 
-        # Create the pipeline, which calls load_plugins in its constructor
         pipeline = Pipeline(
             name="test_pipeline",
             steps=self.steps_config,
             compensation=self.compensation_config,
         )
 
-        # The pipeline’s plugins dictionary should contain all three plugins
         self.assertIn("ComposePlugin", pipeline.plugins)
         self.assertIn("NativePlugin", pipeline.plugins)
         self.assertIn("LaunchPlugin", pipeline.plugins)
@@ -106,14 +101,9 @@ class TestPipeline(unittest.TestCase):
     def test_execute_pipeline_with_conditions_skipped_step(
         self, mock_create_node, mock_spin, mock_import_module
     ):
-        """
-        Steps:
-          - 'compose_step' always runs
-          - 'native_step' and 'launch_step' are skipped if conditions are false
-        """
-        mock_spin.return_value = None  # no-op
 
-        # Mock plugin classes
+        mock_spin.return_value = None
+
         mock_plugin_class = MagicMock()
         mock_import_module.return_value = MagicMock(
             ComposePlugin=mock_plugin_class,
@@ -121,12 +111,10 @@ class TestPipeline(unittest.TestCase):
             LaunchPlugin=mock_plugin_class,
         )
 
-        # We will create a new client mock for each service name
         def create_client_side_effect(plugin, service_name):
             client_mock = MagicMock()
             client_mock.wait_for_service.return_value = True
 
-            # Future with a default success=True so steps pass if they run
             future_mock = MagicMock()
             future_mock.result.return_value = MagicMock(success=True, err_msg="")
             client_mock.call_async.return_value = future_mock
@@ -143,7 +131,6 @@ class TestPipeline(unittest.TestCase):
             compensation=self.compensation_config,
         )
 
-        # Conditions that skip native & launch
         context = {"should_run_native": False, "should_run_launch": False}
         pipeline.execute_pipeline(additional_context=context)
 
@@ -169,9 +156,6 @@ class TestPipeline(unittest.TestCase):
     def test_execute_pipeline_failure_triggers_compensation(
         self, mock_create_node, mock_spin, mock_import_module
     ):
-        """
-        Compose step succeeds, native step fails, triggers kill_step compensation.
-        """
         mock_spin.return_value = None
         mock_plugin_class = MagicMock()
         mock_import_module.return_value = MagicMock(
@@ -180,7 +164,6 @@ class TestPipeline(unittest.TestCase):
             LaunchPlugin=mock_plugin_class,
         )
 
-        # Distinct behavior for each service
         def create_client_side_effect(plugin, service_name):
             client_mock = MagicMock()
             client_mock.wait_for_service.return_value = True
@@ -188,15 +171,12 @@ class TestPipeline(unittest.TestCase):
             future_mock = MagicMock()
 
             if service_name == "muto_compose":
-                # compose_step => success
                 future_mock.result.return_value = MagicMock(success=True, err_msg="")
             elif service_name == "muto_native":
-                # native_step => fails
                 future_mock.result.return_value = MagicMock(
                     success=False, err_msg="Native error"
                 )
             elif service_name == "muto_kill_stack":
-                # kill_step => success
                 future_mock.result.return_value = MagicMock(success=True, err_msg="")
             else:
                 future_mock.result.return_value = MagicMock(
@@ -216,19 +196,15 @@ class TestPipeline(unittest.TestCase):
             compensation=self.compensation_config,
         )
 
-        # Trigger native step to run => it fails => triggers compensation
         context = {"should_run_native": True, "should_run_launch": True}
         pipeline.execute_pipeline(additional_context=context)
 
-        # compose_step => success
         self.assertIn("compose_step", pipeline.context)
         self.assertTrue(pipeline.context["compose_step"].success)
 
-        # native_step => fail
         self.assertIn("native_step", pipeline.context)
         self.assertFalse(pipeline.context["native_step"].success)
 
-        # launch_step => never runs after native fails
         self.assertNotIn("launch_step", pipeline.context)
 
     @patch("importlib.import_module")
@@ -237,9 +213,6 @@ class TestPipeline(unittest.TestCase):
     def test_execute_pipeline_condition_evaluation_error(
         self, mock_create_node, mock_spin, mock_import_module
     ):
-        """
-        Invalid condition => triggers compensation => pipeline aborts.
-        """
         mock_spin.return_value = None
         mock_plugin_class = MagicMock()
         mock_import_module.return_value = MagicMock(
@@ -260,7 +233,6 @@ class TestPipeline(unittest.TestCase):
                         "name": "native_step",
                         "service": "muto_native",
                         "plugin": "NativePlugin",
-                        # malformed condition
                         "condition": "invalid expression!",
                     },
                 ]
@@ -295,15 +267,9 @@ class TestPipeline(unittest.TestCase):
 
         pipeline.execute_pipeline()
 
-        # compose_step should succeed before the invalid condition is hit
         self.assertIn("compose_step", pipeline.context)
         self.assertTrue(pipeline.context["compose_step"].success)
 
-        # Because the second step's condition is invalid, pipeline aborts
-        # and triggers compensation step kill_step
-        # You can check that kill_step was indeed attempted by mocking
-        # calls or verifying logs; but the main assertion is that
-        # 'native_step' does not appear because the condition parsing fails.
         self.assertNotIn("native_step", pipeline.context)
 
     def tearDown(self):
