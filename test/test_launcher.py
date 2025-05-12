@@ -38,9 +38,6 @@ class TestLauncher(unittest.TestCase):
         self.logger_mock = MagicMock()
         rclpy.logging.get_logger = MagicMock(return_value=self.logger_mock)
 
-    def tearDown(self):
-        pass
-
     @classmethod
     def setUpClass(cls) -> None:
         rclpy.init()
@@ -141,7 +138,6 @@ class TestLauncher(unittest.TestCase):
             [call(1234, signal.SIGKILL), call(5678, signal.SIGKILL)], any_order=True
         )
         self.assertEqual(ros2launch_parent._active_nodes, [])
-        # mock_logger.get_logger().info.assert_called_with("Sent SIGKILL to process node1 (PID 1234)")
         mock_logger.get_logger().info.assert_called_with(
             "Sent SIGKILL to process node2 (PID 5678)"
         )

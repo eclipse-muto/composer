@@ -55,9 +55,6 @@ class TestNode(unittest.TestCase):
             stack=self.stack_mock, manifest=self.node_test_toManifest, container=None
         )
 
-    def tearDown(self):
-        pass
-
     @classmethod
     def setUpClass(cls):
         rclpy.init()
