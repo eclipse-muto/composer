@@ -32,8 +32,11 @@ class TestLauncher(unittest.TestCase):
         self._run_process = MagicMock()
         self.launch_arguments = MagicMock()
 
-    def tearDown(self):
-        pass
+        self.launch_args = []
+        self.launch_parent = Ros2LaunchParent(self.launch_args)
+
+        self.logger_mock = MagicMock()
+        rclpy.logging.get_logger = MagicMock(return_value=self.logger_mock)
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -55,23 +58,6 @@ class TestLauncher(unittest.TestCase):
         self.assertIn(("launch_css", "false"), returned_value)
         self.assertIn(("launch_sensor", "false"), returned_value)
 
-
-
-    @patch('multiprocessing.Process')
-    def test_start_method(self, mock_process):
-        ld = LaunchDescription()
-        parent = Ros2LaunchParent(ld)
-        process_mock = MagicMock()
-        mock_process.return_value = process_mock
-
-        parent.start(ld)
-
-        mock_process.assert_called_once()
-        process_mock.start.assert_called_once()
-        self.assertIsNotNone(parent._stop_event)
-        self.assertIsNotNone(parent._process)
-        self.assertEqual(mock_process.call_args[1]['daemon'], True)
-
     def test_runtime_error_parse_launch_argument(self):
         launch_list = ["launch:1"]
         with self.assertRaises(RuntimeError):
@@ -89,6 +75,21 @@ class TestLauncher(unittest.TestCase):
         self.assertIn(("launch_css", "false"), returned_value)
         self.assertIn(("launch_sensor", "true"), returned_value)
         self.assertNotIn(("la0unch_sensor", "false"), returned_value)
+
+    @patch("multiprocessing.Process")
+    def test_start_method(self, mock_process):
+        ld = LaunchDescription()
+        parent = Ros2LaunchParent(ld)
+        process_mock = MagicMock()
+        mock_process.return_value = process_mock
+
+        parent.start(ld)
+
+        mock_process.assert_called_once()
+        process_mock.start.assert_called_once()
+        self.assertIsNotNone(parent._stop_event)
+        self.assertIsNotNone(parent._process)
+        self.assertEqual(mock_process.call_args[1]["daemon"], True)
 
     @patch("rclpy.logging")
     def test_shutdown_is_alive_true(self, mock_logger):
@@ -137,7 +138,6 @@ class TestLauncher(unittest.TestCase):
             [call(1234, signal.SIGKILL), call(5678, signal.SIGKILL)], any_order=True
         )
         self.assertEqual(ros2launch_parent._active_nodes, [])
-        # mock_logger.get_logger().info.assert_called_with("Sent SIGKILL to process node1 (PID 1234)")
         mock_logger.get_logger().info.assert_called_with(
             "Sent SIGKILL to process node2 (PID 5678)"
         )
@@ -237,6 +237,121 @@ class TestLauncher(unittest.TestCase):
         )
         self.assertNotIn({"test_node": 24}, node_list)
         mock_logger.get_logger().info.assert_called_with("Active nodes after exit: []")
+
+    @patch("asyncio.new_event_loop")
+    @patch("asyncio.set_event_loop")
+    def test_run_process(self, mock_set, mock_new):
+        ld = LaunchDescription()
+        node = Ros2LaunchParent(ld)
+        mock_stop_event = MagicMock()
+        node._run_process(mock_stop_event, ld)
+        mock_new.assert_called_once()
+        mock_set.assert_called_once()
+
+    @patch("composer.workflow.launcher.Node")
+    @patch("launch.LaunchDescription.add_action")
+    def test_create_launch_description_for_added_nodes(
+        self, mock_add_action, mock_node
+    ):
+        added_nodes = {
+            "node1": {
+                "name": "test_node",
+                "namespace": "/test_ns",
+                "package": "test_pkg",
+                "executable": "test_exe",
+                "parameters": [{"param1": "value1"}],
+            }
+        }
+        ld = MagicMock()
+        node = Ros2LaunchParent(ld)
+
+        node.create_launch_description_for_added_nodes(added_nodes)
+        call_value = mock_node(
+            package="test_pkg",
+            executable="test_exe",
+            name="test_node",
+            namespace="/test_ns",
+            output="screen",
+        )
+        mock_add_action.assert_called_once_with(call_value)
+
+    @patch("os.kill")
+    def test_kill_single_node(self, mock_kill):
+        with self.launch_parent._lock:
+            self.launch_parent._active_nodes.append({"node1": 1234})
+            self.launch_parent._active_nodes.append({"node2": 5678})
+
+        self.launch_parent.kill_nodes_by_name(["node1"])
+
+        mock_kill.assert_called_once_with(1234, signal.SIGKILL)
+
+        with self.launch_parent._lock:
+            self.assertEqual(len(self.launch_parent._active_nodes), 1)
+            self.assertEqual(self.launch_parent._active_nodes[0], {"node2": 5678})
+
+        self.logger_mock.info.assert_any_call(
+            "Sent SIGKILL to process node1 (PID 1234)"
+        )
+
+    @patch("os.kill")
+    def test_kill_multiple_nodes(self, mock_kill):
+        with self.launch_parent._lock:
+            self.launch_parent._active_nodes.append({"node1": 1234})
+            self.launch_parent._active_nodes.append({"node2": 5678})
+            self.launch_parent._active_nodes.append({"node3": 9101})
+
+        self.launch_parent.kill_nodes_by_name(["node1", "node3"])
+
+        self.assertEqual(mock_kill.call_count, 2)
+        mock_kill.assert_any_call(1234, signal.SIGKILL)
+        mock_kill.assert_any_call(9101, signal.SIGKILL)
+
+        with self.launch_parent._lock:
+            self.assertEqual(len(self.launch_parent._active_nodes), 1)
+            self.assertEqual(self.launch_parent._active_nodes[0], {"node2": 5678})
+
+    @patch("os.kill", side_effect=ProcessLookupError)
+    def test_kill_already_terminated_node(self, mock_kill):
+        with self.launch_parent._lock:
+            self.launch_parent._active_nodes.append({"node1": 1234})
+
+        self.launch_parent.kill_nodes_by_name(["node1"])
+
+        mock_kill.assert_called_once_with(1234, signal.SIGKILL)
+
+        with self.launch_parent._lock:
+            self.assertEqual(len(self.launch_parent._active_nodes), 0)
+
+        self.logger_mock.info.assert_any_call(
+            "Process node1 (PID 1234) already terminated."
+        )
+
+    @patch("os.kill", side_effect=PermissionError("No permission"))
+    def test_kill_node_permission_error(self, mock_kill):
+        with self.launch_parent._lock:
+            self.launch_parent._active_nodes.append({"node1": 1234})
+
+        self.launch_parent.kill_nodes_by_name(["node1"])
+
+        mock_kill.assert_called_once_with(1234, signal.SIGKILL)
+
+        with self.launch_parent._lock:
+            self.assertEqual(len(self.launch_parent._active_nodes), 0)
+
+        self.logger_mock.error.assert_called_once_with(
+            "Failed to kill process node1 (PID 1234): No permission"
+        )
+
+    @patch("os.kill")
+    def test_kill_nodes_with_no_active_nodes(self, mock_kill):
+        with self.launch_parent._lock:
+            self.assertEqual(len(self.launch_parent._active_nodes), 0)
+
+        self.launch_parent.kill_nodes_by_name(["node1"])
+
+        mock_kill.assert_not_called()
+
+        self.logger_mock.info.assert_any_call("No active nodes to kill.")
 
 
 if __name__ == "__main__":
