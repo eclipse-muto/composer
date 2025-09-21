@@ -332,7 +332,8 @@ def main():
     native_plugin = MutoDefaultNativePlugin()
     rclpy.spin(native_plugin)
     native_plugin.destroy_node()
-    rclpy.shutdown()
+    if rclpy.ok():
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":

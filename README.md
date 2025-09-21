@@ -119,6 +119,13 @@ mkdir config/ && cd config/
 ```diff
 /**:
   ros__parameters:
+
+    prefix: muto
+    #You can override this during launch using vehicle_namespace argument
+    namespace: org.eclipse.muto.sandbox    
+    #You can override this during launch using vehicle_name argument
+    name: mytest_vehicle_001
+
     stack_topic: "stack"
     twin_topic: "twin"
     agent_to_gateway_topic: "agent_to_gateway"
@@ -126,8 +133,8 @@ mkdir config/ && cd config/
     agent_to_commands_topic: "agent_to_command"
     commands_to_agent_topic: "command_to_agent"
     thing_messages_topic: "thing_messages"
-    - ignored_packages: ["package1", "package3"]  # the packages in this list will be ignored in the build phase
-    + ignored_packages: ["package2", "package4"]
+-  ignored_packages: ["package1", "package3"]  # the packages in this list will be ignored in the build phase
++  ignored_packages: ["package2", "package4"]
 
     twin_url: "http://ditto:ditto@sandbox.composiv.ai"
     host: sandbox.composiv.ai
@@ -138,9 +145,8 @@ mkdir config/ && cd config/
     anonymous: false
     type: real_car
     attributes: '{"brand": "muto", "model": "composer"}'
-    prefix: muto
-    namespace: org.eclipse.muto.sandbox
-    name: composer-guy
+
+
 
     commands:
       command1:
@@ -191,23 +197,37 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
-
+from launch.actions.include_launch_description import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
-    muto_namespace_arg = DeclareLaunchArgument(
-        "muto_namespace",
-        default_value="muto"
+    # Arguments
+    muto_namespace_arg = DeclareLaunchArgument("muto_namespace", default_value="muto")
+    vehicle_namespace_arg = DeclareLaunchArgument(
+        "vehicle_namespace",
+        default_value="org.eclipse.muto.sandbox",
+        description="Vehicle ID namespace",
+    )
+    vehicle_name_arg = DeclareLaunchArgument(
+        "vehicle_name", description="Vehicle Name"
     )
 
-    muto_params = "./config/muto.yaml"
+    # Files
+    muto_params = "config/muto.yaml"
 
+    # Agent
     node_agent = Node(
         namespace=LaunchConfiguration("muto_namespace"),
         name="agent",
         package="agent",
         executable="muto_agent",
         output="screen",
-        parameters=[muto_params]
+        parameters=[
+            muto_params,
+            {"namespace": LaunchConfiguration("vehicle_namespace")},
+            {"name": LaunchConfiguration("vehicle_name")},
+        ],
     )
 
     node_mqtt_gateway = Node(
@@ -216,7 +236,11 @@ def generate_launch_description():
         package="agent",
         executable="mqtt",
         output="screen",
-        parameters=[muto_params]
+        parameters=[
+            muto_params,
+            {"namespace": LaunchConfiguration("vehicle_namespace")},
+            {"name": LaunchConfiguration("vehicle_name")},
+        ],
     )
 
     node_commands = Node(
@@ -225,59 +249,93 @@ def generate_launch_description():
         package="agent",
         executable="commands",
         output="screen",
-        parameters=[muto_params]
+        parameters=[
+            muto_params,
+            {"namespace": LaunchConfiguration("vehicle_namespace")},
+            {"name": LaunchConfiguration("vehicle_name")},
+        ],
     )
 
+    # Core
     node_twin = Node(
         namespace=LaunchConfiguration("muto_namespace"),
         name="core_twin",
         package="core",
         executable="twin",
         output="screen",
-        parameters=[muto_params]
+        parameters=[
+            muto_params,
+            {"namespace": LaunchConfiguration("vehicle_namespace")},
+            {"name": LaunchConfiguration("vehicle_name")},
+        ],
     )
 
+    # Composer
     node_composer = Node(
         namespace=LaunchConfiguration("muto_namespace"),
+        name="muto_composer",
         package="composer",
         executable="muto_composer",
         output="screen",
-        parameters=[muto_params]
+        parameters=[
+            muto_params,
+            {"namespace": LaunchConfiguration("vehicle_namespace")},
+            {"name": LaunchConfiguration("vehicle_name")},
+        ],
     )
 
     node_compose_plugin = Node(
         namespace=LaunchConfiguration("muto_namespace"),
+        name="compose_plugin",
         package="composer",
         executable="compose_plugin",
         output="screen",
         parameters=[
             muto_params,
-            {"names": LaunchConfiguration("vehicle_id_namespace")},
-            {"name": LaunchConfiguration("vehicle_id")}
-        ]
+            {"namespace": LaunchConfiguration("vehicle_namespace")},
+            {"name": LaunchConfiguration("vehicle_name")},
+        ],
     )
 
     node_native_plugin = Node(
         namespace=LaunchConfiguration("muto_namespace"),
+        name="native_plugin",
         package="composer",
         executable="native_plugin",
         output="screen",
-         parameters=[muto_params]
+        parameters=[
+            muto_params,
+            {"namespace": LaunchConfiguration("vehicle_namespace")},
+            {"name": LaunchConfiguration("vehicle_name")},
+        ],
     )
 
     node_launch_plugin = Node(
         namespace=LaunchConfiguration("muto_namespace"),
+        name="launch_plugin",
         package="composer",
         executable="launch_plugin",
         output="screen",
-        parameters=[muto_params]
+        parameters=[
+            muto_params,
+            {"namespace": LaunchConfiguration("vehicle_namespace")},
+            {"name": LaunchConfiguration("vehicle_name")},
+        ],
     )
 
+    launch_introspection = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(get_package_share_directory("composer"), "launch", "introspection.launch.py")
+        )
+    )
 
+    # Launch Description Object
     ld = LaunchDescription()
 
     ld.add_action(muto_namespace_arg)
-    
+    ld.add_action(vehicle_namespace_arg)
+    ld.add_action(vehicle_name_arg)
+
     ld.add_action(node_agent)
     ld.add_action(node_mqtt_gateway)
     ld.add_action(node_commands)
@@ -286,8 +344,10 @@ def generate_launch_description():
     ld.add_action(node_compose_plugin)
     ld.add_action(node_native_plugin)
     ld.add_action(node_launch_plugin)
+    # ld.add_action(launch_introspection)
 
     return ld
+
 
 ```
 
@@ -300,7 +360,7 @@ To start `Muto` as a whole (including `composer`):
 ```bash
 cd $HOME/muto
 source /opt/ros/$ROS_DISTRO/setup.bash && source install/local_setup.bash
-ros2 launch launch/muto.launch.py
+ros2 launch launch/muto.launch.py vehicle_namespace:=org.eclipse.muto.test vehicle_name:=test-robot-$(shuf -i 1000-9999 -n 1)
 ```
 
 ### Sending Deployment Actions

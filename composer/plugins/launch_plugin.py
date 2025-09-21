@@ -335,7 +335,8 @@ def main():
     launch_plugin = MutoDefaultLaunchPlugin()
     rclpy.spin(launch_plugin)
     launch_plugin.destroy_node()
-    rclpy.shutdown()
+    if rclpy.ok():
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":

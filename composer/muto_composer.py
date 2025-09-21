@@ -165,14 +165,27 @@ class MutoComposer(Node):
         try:
             self.method = stack_msg.method  # start, kill, apply
             payload = json.loads(stack_msg.payload)
-            payload_value = payload["value"]
-            stack_id = payload_value.get("stackId", "")
-            req = CoreTwin.Request()
-            req.input = stack_id
-            future = self.get_stack_cli.call_async(req)
-            future2 = self.set_stack_cli.call_async(req)
-            future2.add_done_callback(self.set_stack_done_callback)
-            future.add_done_callback(self.get_stack_done_callback)
+           
+            # if the payload has a value key, extract stackId from it
+            # otherwise, assume the payload is the stack itself do not get
+            # stack from core_twin, use the payload directlt
+
+            if "value" in payload:
+                payload_value = payload["value"]
+                stack_id = payload_value.get("stackId", "")
+                req = CoreTwin.Request()
+                req.input = stack_id
+                future = self.get_stack_cli.call_async(req)
+                future2 = self.set_stack_cli.call_async(req)
+                future2.add_done_callback(self.set_stack_done_callback)
+                future.add_done_callback(self.get_stack_done_callback)
+            else:
+                # Use payload directly as the stack
+                resolved_stack = self.resolve_expression(json.dumps(payload))
+                self.next_stack = resolved_stack
+                self.publish_next_stack(self.next_stack)
+                self.publish_raw_stack(resolved_stack)
+                self.determine_execution_path()
         except json.JSONDecodeError as e:
             self.get_logger().error(f"Invalid JSON in payload: {e}")
         except KeyError as k:
@@ -373,4 +386,5 @@ def main(args=None):
     composer = MutoComposer()
     rclpy.spin(composer)
     composer.destroy_node()
-    rclpy.shutdown()
+    if rclpy.ok():
+        rclpy.shutdown()

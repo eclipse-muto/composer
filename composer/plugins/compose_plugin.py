@@ -110,4 +110,5 @@ def main():
     compose_plugin = MutoDefaultComposePlugin()
     rclpy.spin(compose_plugin)
     compose_plugin.destroy_node()
-    rclpy.shutdown()
+    if rclpy.ok():
+        rclpy.shutdown()
