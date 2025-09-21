@@ -98,18 +98,28 @@ class TestMutoComposer(unittest.TestCase):
             "Invalid JSON in payload: Expecting value: line 1 column 1 (char 0)"
         )
 
-    @patch.object(MutoComposer, "get_logger")
+    @patch.object(MutoComposer, "determine_execution_path")
+    @patch.object(MutoComposer, "publish_raw_stack")
+    @patch.object(MutoComposer, "publish_next_stack")
+    @patch.object(MutoComposer, "resolve_expression")
     @patch("json.loads")
-    def test_on_stack_callback_missing_key(self, mock_json_loads, mock_get_logger):
+    def test_on_stack_callback_missing_key(self, mock_json_loads, mock_resolve_expression, 
+                                         mock_publish_next_stack, mock_publish_raw_stack, 
+                                         mock_determine_execution_path):
+        # Test that missing 'value' key uses payload directly as stack
         mock_json_loads.return_value = {"not_value": {"stackId": "test_stack_id"}}
-        mock_logger = MagicMock()
-        mock_get_logger.return_value = mock_logger
+        mock_resolve_expression.return_value = '{"resolved": "stack"}'
         stack_msg = MagicMock()
+        stack_msg.method = "start"
         stack_msg.payload = '{"not_value": {"stackId": "test_stack_id"}}'
 
         self.node.on_stack_callback(stack_msg)
 
-        mock_logger.error.assert_called_with("Payload is missing key: 'value'")
+        # Verify that it uses the payload directly as stack (else branch behavior)
+        mock_resolve_expression.assert_called_once()
+        mock_publish_next_stack.assert_called_once_with('{"resolved": "stack"}')
+        mock_publish_raw_stack.assert_called_once_with('{"resolved": "stack"}')
+        mock_determine_execution_path.assert_called_once()
 
     @patch.object(MutoComposer, "resolve_expression")
     @patch.object(MutoComposer, "determine_execution_path")
