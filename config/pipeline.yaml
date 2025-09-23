@@ -18,10 +18,10 @@ pipelines:
         - service: muto_compose
           plugin: ComposePlugin
           name: compose_step
-        - service: muto_native
-          plugin: NativePlugin
-          name: native_step
-          condition: "should_run_native == True"
+        - service: muto_provision
+          plugin: ProvisionPlugin
+          name: provision_step
+          condition: "should_run_provision == True"
         - service: muto_start_stack
           plugin: LaunchPlugin
           name: start_stack_step
@@ -48,10 +48,18 @@ pipelines:
         - service: muto_compose
           plugin: ComposePlugin
           name: compose_step
+        - service: muto_provision
+          plugin: ProvisionPlugin
+          name: provision_step
+          condition: "should_run_provision == True"
         - service: muto_apply_stack
           plugin: LaunchPlugin
           name: apply_stack_step
           condition: "compose_step.success == True"
+        - service: muto_start_stack
+          plugin: LaunchPlugin
+          name: start_stack_step
+          condition: "compose_step.success == True and should_run_launch == True"
     compensation:
       - service: muto_kill_stack
         plugin: LaunchPlugin

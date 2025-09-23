@@ -30,10 +30,10 @@ class TestPipeline(unittest.TestCase):
                         "plugin": "ComposePlugin",
                     },
                     {
-                        "name": "native_step",
-                        "service": "muto_native",
-                        "plugin": "NativePlugin",
-                        "condition": "should_run_native == True",
+                        "name": "provision_step",
+                        "service": "muto_provision",
+                        "plugin": "ProvisionPlugin",
+                        "condition": "should_run_provision == True",
                     },
                     {
                         "name": "launch_step",
@@ -59,7 +59,7 @@ class TestPipeline(unittest.TestCase):
         mock_plugin_class = MagicMock()
         mock_import_module.return_value = MagicMock(
             ComposePlugin=mock_plugin_class,
-            NativePlugin=mock_plugin_class,
+            ProvisionPlugin=mock_plugin_class,
             LaunchPlugin=mock_plugin_class,
         )
 
@@ -70,7 +70,7 @@ class TestPipeline(unittest.TestCase):
         )
 
         self.assertIn("ComposePlugin", pipeline.plugins)
-        self.assertIn("NativePlugin", pipeline.plugins)
+        self.assertIn("ProvisionPlugin", pipeline.plugins)
         self.assertIn("LaunchPlugin", pipeline.plugins)
 
     def test_load_plugins_failure(self):
@@ -81,7 +81,7 @@ class TestPipeline(unittest.TestCase):
                     {
                         "name": "random_step",
                         "plugin": "RandomPlugin",
-                        "service": "random_native",
+                        "service": "random_provision",
                     }
                 ]
             }
@@ -107,7 +107,7 @@ class TestPipeline(unittest.TestCase):
         mock_plugin_class = MagicMock()
         mock_import_module.return_value = MagicMock(
             ComposePlugin=mock_plugin_class,
-            NativePlugin=mock_plugin_class,
+            ProvisionPlugin=mock_plugin_class,
             LaunchPlugin=mock_plugin_class,
         )
 
@@ -131,7 +131,7 @@ class TestPipeline(unittest.TestCase):
             compensation=self.compensation_config,
         )
 
-        context = {"should_run_native": False, "should_run_launch": False}
+        context = {"should_run_provision": False, "should_run_launch": False}
         pipeline.execute_pipeline(additional_context=context)
 
         self.assertIn(
@@ -140,9 +140,9 @@ class TestPipeline(unittest.TestCase):
             "compose_step should be recorded in pipeline.context",
         )
         self.assertNotIn(
-            "native_step",
+            "provision_step",
             pipeline.context,
-            "native_step should not run, so not in pipeline.context",
+            "provision_step should not run, so not in pipeline.context",
         )
         self.assertNotIn(
             "launch_step",
@@ -160,7 +160,7 @@ class TestPipeline(unittest.TestCase):
         mock_plugin_class = MagicMock()
         mock_import_module.return_value = MagicMock(
             ComposePlugin=mock_plugin_class,
-            NativePlugin=mock_plugin_class,
+            ProvisionPlugin=mock_plugin_class,
             LaunchPlugin=mock_plugin_class,
         )
 
@@ -172,9 +172,9 @@ class TestPipeline(unittest.TestCase):
 
             if service_name == "muto_compose":
                 future_mock.result.return_value = MagicMock(success=True, err_msg="")
-            elif service_name == "muto_native":
+            elif service_name == "muto_provision":
                 future_mock.result.return_value = MagicMock(
-                    success=False, err_msg="Native error"
+                    success=False, err_msg="Provision error"
                 )
             elif service_name == "muto_kill_stack":
                 future_mock.result.return_value = MagicMock(success=True, err_msg="")
@@ -196,14 +196,14 @@ class TestPipeline(unittest.TestCase):
             compensation=self.compensation_config,
         )
 
-        context = {"should_run_native": True, "should_run_launch": True}
+        context = {"should_run_provision": True, "should_run_launch": True}
         pipeline.execute_pipeline(additional_context=context)
 
         self.assertIn("compose_step", pipeline.context)
         self.assertTrue(pipeline.context["compose_step"].success)
 
-        self.assertIn("native_step", pipeline.context)
-        self.assertFalse(pipeline.context["native_step"].success)
+        self.assertIn("provision_step", pipeline.context)
+        self.assertFalse(pipeline.context["provision_step"].success)
 
         self.assertNotIn("launch_step", pipeline.context)
 
@@ -217,7 +217,7 @@ class TestPipeline(unittest.TestCase):
         mock_plugin_class = MagicMock()
         mock_import_module.return_value = MagicMock(
             ComposePlugin=mock_plugin_class,
-            NativePlugin=mock_plugin_class,
+            ProvisionPlugin=mock_plugin_class,
             LaunchPlugin=mock_plugin_class,
         )
 
@@ -230,9 +230,9 @@ class TestPipeline(unittest.TestCase):
                         "plugin": "ComposePlugin",
                     },
                     {
-                        "name": "native_step",
-                        "service": "muto_native",
-                        "plugin": "NativePlugin",
+                        "name": "provision_step",
+                        "service": "muto_provision",
+                        "plugin": "ProvisionPlugin",
                         "condition": "invalid expression!",
                     },
                 ]
@@ -270,7 +270,7 @@ class TestPipeline(unittest.TestCase):
         self.assertIn("compose_step", pipeline.context)
         self.assertTrue(pipeline.context["compose_step"].success)
 
-        self.assertNotIn("native_step", pipeline.context)
+        self.assertNotIn("provision_step", pipeline.context)
 
     def tearDown(self):
         if rclpy.ok():

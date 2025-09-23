@@ -15,14 +15,17 @@ import os
 import json
 import subprocess
 import asyncio
-from typing import Optional
+import threading
+import signal
+import atexit
+from typing import Optional, Set
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import ReentrantCallbackGroup
 from muto_msgs.msg import StackManifest
 from muto_msgs.srv import LaunchPlugin, CoreTwin
 from composer.workflow.launcher import Ros2LaunchParent
-from composer.plugins.native_plugin import WORKSPACES_PATH
+from composer.plugins.provision_plugin import WORKSPACES_PATH
 from composer.model.stack import Stack
 
 class MutoDefaultLaunchPlugin(Node):
@@ -46,11 +49,21 @@ class MutoDefaultLaunchPlugin(Node):
         self.current_stack: Optional[StackManifest] = None
         self.launch_arguments = []
         self.launcher = Ros2LaunchParent(self.launch_arguments)
+        self.launch_process: Optional[subprocess.Popen] = None
+        self._managed_processes: Set[subprocess.Popen] = set()
 
         self.async_loop = asyncio.get_event_loop()
         self.timer = self.create_timer(
             0.1, self.run_async_loop, callback_group=ReentrantCallbackGroup()
         )
+
+        atexit.register(self._cleanup_managed_processes)
+
+    def destroy_node(self) -> bool:
+        """Ensure launched processes are cleaned up when the node is destroyed."""
+        self.get_logger().info("Destroying launch_plugin node; terminating active launch process if any.")
+        self._terminate_launch_process()
+        return super().destroy_node()
 
     def run_async_loop(self):
         """Periodically step through the asyncio event loop."""
@@ -63,6 +76,9 @@ class MutoDefaultLaunchPlugin(Node):
             self.current_stack = stack_msg
             args = json.loads(self.current_stack.args)
             self.launch_arguments = [f"{key}:={value}" for key, value in args.items()]
+            self.get_logger().info(
+                f"Launch arguments parsed: {self.launch_arguments}"
+            )
         except json.JSONDecodeError as e:
             self.get_logger().error(f"Error parsing launch arguments: {e}")
         except Exception as e:
@@ -80,9 +96,16 @@ class MutoDefaultLaunchPlugin(Node):
             Optional[str]: The full path to the file if found, otherwise None.
         """
         self.get_logger().info(f"Searching for {file_name} under {ws_path}")
+
+        candidate = os.path.join(ws_path, file_name)
+        if os.path.isfile(candidate):
+            self.get_logger().info(f"Found file directly: {candidate}")
+            return candidate
+
+        basename = os.path.basename(file_name)
         for root, _, files in os.walk(ws_path):
-            if file_name in files:
-                found_path = os.path.join(root, file_name)
+            if basename in files:
+                found_path = os.path.join(root, basename)
                 self.get_logger().info(f"Found file: {found_path}")
                 return found_path
         self.get_logger().warning(f"File '{file_name}' not found under '{ws_path}'.")
@@ -101,9 +124,9 @@ class MutoDefaultLaunchPlugin(Node):
             WORKSPACES_PATH, self.current_stack.name.replace(" ", "_")
         )
 
-        for name, source_script in sources.items():
-            self.get_logger().info(f"Sourcing: {name} | {source_script}")
-            command = f"bash -c 'source {source_script} && env'"
+        def source_script(name: str, script_path: str) -> None:
+            self.get_logger().info(f"Sourcing: {name} | {script_path}")
+            command = f"bash -c 'source {script_path} && env'"
             try:
                 result = subprocess.run(
                     command,
@@ -129,6 +152,21 @@ class MutoDefaultLaunchPlugin(Node):
             except Exception as e:
                 self.get_logger().error(f"Error sourcing workspace '{name}': {e}")
 
+        for name, script_path in sources.items():
+            source_script(name, script_path)
+
+        if not sources:
+            default_install = os.path.join(workspace_dir, "install", "setup.bash")
+            if os.path.exists(default_install):
+                self.get_logger().info(
+                    "No explicit source scripts provided; sourcing install/setup.bash"
+                )
+                source_script("workspace_install", default_install)
+            else:
+                self.get_logger().debug(
+                    "No explicit source scripts provided and install/setup.bash not found; skipping sourcing."
+                )
+
     def handle_start(
         self, request: LaunchPlugin.Request, response: LaunchPlugin.Response
     ):
@@ -146,9 +184,13 @@ class MutoDefaultLaunchPlugin(Node):
             # launch logic changes depending on the contents of the stack
             if request.start:
                 if self.current_stack:
+                    self.get_logger().info(
+                        f"Start requested; current launch PID={getattr(self.launch_process, 'pid', None)}"
+                    )
                     self.source_workspaces()
 
                     if self.current_stack.launch_description_source:
+                        self._terminate_launch_process()
                         launch_file = self.find_file(
                             os.path.join(
                                 WORKSPACES_PATH,
@@ -160,16 +202,7 @@ class MutoDefaultLaunchPlugin(Node):
                             raise FileNotFoundError(
                                 f"Launch file not found: {self.current_stack.launch_description_source}"
                             )
-
-                        # Schedule the coroutine in the event loop
-                        asyncio.run_coroutine_threadsafe(
-                            self.launcher.launch_a_launch_file(
-                                launch_file_path=launch_file,
-                                launch_file_arguments=self.launch_arguments,
-                            ),
-                            self.async_loop,
-                        )
-                        self.get_logger().info("Launch file execution initiated.")
+                        self._launch_via_ros2(launch_file)
                     elif self.current_stack.on_start and self.current_stack.on_kill:
                         script = self.find_file(
                             os.path.join(
@@ -251,8 +284,11 @@ class MutoDefaultLaunchPlugin(Node):
         try:
             if request.start:
                 if self.current_stack:
+                    self.get_logger().info(
+                        f"Kill requested; current launch PID={getattr(self.launch_process, 'pid', None)}"
+                    )
                     if self.current_stack.launch_description_source:
-                        self.launcher.kill()
+                        self._terminate_launch_process()
                         self.get_logger().info("Launch process killed successfully.")
                     elif self.current_stack.on_kill:
                         script = self.find_file(
@@ -317,7 +353,11 @@ class MutoDefaultLaunchPlugin(Node):
         """
         try:
             if self.current_stack:
-                stack = Stack(manifest=json.loads(self.current_stack.stack))
+                stack_dict = json.loads(self.current_stack.stack)
+                self.get_logger().info(
+                    f"Apply requested with stack manifest keys: {list(stack_dict.keys())}"
+                )
+                stack = Stack(manifest=stack_dict)
                 stack.apply(self.launcher)
 
             response.success = True
@@ -327,6 +367,119 @@ class MutoDefaultLaunchPlugin(Node):
             response.err_msg = str(e)
             response.success = False
         return response
+
+    def _launch_via_ros2(self, launch_file: str) -> None:
+        """Launch the given launch file in a subprocess using ros2 launch."""
+        self._terminate_launch_process()
+
+        command = ["ros2", "launch", launch_file]
+        command.extend(self.launch_arguments)
+        env = os.environ.copy()
+        self.get_logger().info(f"Launch PATH: {env.get('PATH', '')}")
+        self.get_logger().info(
+            f"Starting launch process in {os.path.dirname(launch_file)}: {' '.join(command)}"
+        )
+        try:
+            self.launch_process = subprocess.Popen(
+                command,
+                env=env,
+                cwd=os.path.dirname(launch_file) or None,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                preexec_fn=os.setsid,
+            )
+            self._managed_processes.add(self.launch_process)
+            self.get_logger().info(
+                f"Launch process started with PID {self.launch_process.pid}"
+            )
+            if self.launch_process.stdout:
+                threading.Thread(
+                    target=self._log_stream,
+                    args=(self.launch_process.stdout, "stdout"),
+                    daemon=True,
+                ).start()
+            if self.launch_process.stderr:
+                threading.Thread(
+                    target=self._log_stream,
+                    args=(self.launch_process.stderr, "stderr"),
+                    daemon=True,
+                ).start()
+            threading.Thread(
+                target=self._monitor_process,
+                daemon=True,
+            ).start()
+        except FileNotFoundError:
+            self.launch_process = None
+            raise FileNotFoundError(
+                "ros2 command not found in PATH while launching stack"
+            )
+        except Exception as exc:
+            self.launch_process = None
+            raise RuntimeError(f"Failed to start launch process: {exc}")
+
+    def _terminate_launch_process(self) -> None:
+        if self.launch_process and self.launch_process.poll() is None:
+            self.get_logger().info("Terminating existing launch process")
+            try:
+                pgid = os.getpgid(self.launch_process.pid)
+                self.get_logger().debug(f"Sending SIGTERM to process group {pgid}")
+                os.killpg(pgid, signal.SIGTERM)
+            except ProcessLookupError:
+                self.get_logger().debug("Process group already gone when sending SIGTERM")
+                pass
+            try:
+                self.launch_process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                try:
+                    pgid = os.getpgid(self.launch_process.pid)
+                    self.get_logger().warning(f"Process did not exit; sending SIGKILL to {pgid}")
+                    os.killpg(pgid, signal.SIGKILL)
+                except ProcessLookupError:
+                    self.get_logger().debug("Process group already gone when sending SIGKILL")
+                self.get_logger().warning(
+                    "Launch process did not terminate gracefully; killed."
+                )
+            finally:
+                self.get_logger().info("Existing launch process terminated.")
+        self.launch_process = None
+
+    def _log_stream(self, stream, label: str) -> None:
+        for line in iter(stream.readline, ""):
+            text = line.strip()
+            if text:
+                self.get_logger().info(f"launch {label}: {text}")
+        stream.close()
+
+    def _monitor_process(self) -> None:
+        if not self.launch_process:
+            return
+        process = self.launch_process
+        returncode = process.wait()
+        self._managed_processes.discard(process)
+        if process is self.launch_process:
+            self.launch_process = None
+        self.get_logger().info(
+            f"Launch process exited with return code {returncode}"
+        )
+
+    def _cleanup_managed_processes(self) -> None:
+        for process in list(self._managed_processes):
+            if process.poll() is None:
+                try:
+                    pgid = os.getpgid(process.pid)
+                    os.killpg(pgid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        pgid = os.getpgid(process.pid)
+                        os.killpg(pgid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+        self._managed_processes.clear()
 
 
 

@@ -15,6 +15,8 @@ import os
 import re
 import json
 import yaml
+import base64
+from typing import Optional
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
@@ -165,6 +167,11 @@ class MutoComposer(Node):
         try:
             self.method = stack_msg.method  # start, kill, apply
             payload = json.loads(stack_msg.payload)
+
+            stack_override = self._extract_stack_from_solution(payload)
+            if stack_override:
+                payload = stack_override
+                self.get_logger().info("Extracted stack from solution manifest before execution.")
            
             # if the payload has a value key, extract stackId from it
             # otherwise, assume the payload is the stack itself do not get
@@ -260,6 +267,8 @@ class MutoComposer(Node):
             self.get_logger().error(f"Failed to parse next stack JSON: {e}")
             return
 
+        self.get_logger().info(f"Next stack keys: {list(next_stack.keys())}")
+
         is_next_stack_empty = not next_stack.get("node", "") and not next_stack.get(
             "composable", ""
         )
@@ -268,39 +277,88 @@ class MutoComposer(Node):
         has_on_start_and_on_kill = all(
             [next_stack.get("on_start"), next_stack.get("on_kill")]
         )
+        artifact_present = next_stack.get("artifact")
+        has_archive_artifact = bool(artifact_present)
+        if has_archive_artifact:
+            self.get_logger().info(f"Artifact details detected: {artifact_present.keys() if isinstance(artifact_present, dict) else artifact_present}")
 
-        if is_next_stack_empty and (has_launch_description or has_on_start_and_on_kill):
-            # Condition to run NativePlugin
-            should_run_native = True
+        if has_archive_artifact:
+            should_run_provision = True
             should_run_launch = True
             self.get_logger().info(
-                "Conditions met to run NativePlugin and LaunchPlugin."
+                "Archive artifact detected; running ProvisionPlugin and LaunchPlugin."
+            )
+        elif is_next_stack_empty and (has_launch_description or has_on_start_and_on_kill):
+            # Condition to run ProvisionPlugin
+            should_run_provision = True
+            should_run_launch = True
+            self.get_logger().info(
+                "Conditions met to run ProvisionPlugin and LaunchPlugin."
             )
         elif not is_next_stack_empty:
-            # Condition to merge stacks and bypass NativePlugin
-            should_run_native = False
+            # Condition to merge stacks and bypass ProvisionPlugin
+            should_run_provision = False
             should_run_launch = True
             self.get_logger().info(
-                "Conditions met to merge stacks and bypass NativePlugin."
+                "Conditions met to merge stacks and bypass ProvisionPlugin."
             )
             # Merge current and next stacks
             merged_stack = self.merge(self.current_stack, next_stack)
             self.current_stack = merged_stack
             self.publish_raw_stack(json.dumps(merged_stack))  # Publish the merged stack
         else:
-            # Conditions not met to run NativePlugin
-            should_run_native = False
+            # Conditions not met to run ProvisionPlugin
+            should_run_provision = False
             should_run_launch = False
             self.get_logger().info(
-                "Conditions not met to run NativePlugin AND LaunchPlugin."
+                "Conditions not met to run ProvisionPlugin AND LaunchPlugin."
             )
 
         # Execute the appropriate pipeline with context variables
         execution_context = {
-            "should_run_native": should_run_native,
+            "should_run_provision": should_run_provision,
             "should_run_launch": should_run_launch,
         }
         self.pipeline_execute(self.method, execution_context)
+
+    def _extract_stack_from_solution(self, payload: dict) -> Optional[dict]:
+        spec = payload.get("spec")
+        if not isinstance(spec, dict):
+            return None
+
+        components = spec.get("components", [])
+        if not isinstance(components, list):
+            return None
+
+        for component in components:
+            properties = component.get("properties", {})
+            if properties.get("type") != "stack":
+                continue
+            data_b64 = properties.get("data")
+            if not data_b64:
+                continue
+
+            try:
+                raw = base64.b64decode(data_b64)
+                import gzip
+                import io
+
+                while True:
+                    try:
+                        stack_json = raw.decode("utf-8")
+                        stack_dict = json.loads(stack_json)
+                        return stack_dict
+                    except (UnicodeDecodeError, json.JSONDecodeError):
+                        if len(raw) > 2 and raw[0] == 0x1F and raw[1] == 0x8B:  # gzip magic numbers
+                            with gzip.GzipFile(fileobj=io.BytesIO(raw)) as gz:
+                                raw = gz.read()
+                            continue
+                        raise
+            except (ValueError, json.JSONDecodeError, OSError) as exc:
+                self.get_logger().warning(
+                    f"Failed to decode stack component '{component.get('name', '')}' from solution: {exc}"
+                )
+        return None
 
     def merge(self, current_stack: dict, next_stack: dict) -> dict:
         """
