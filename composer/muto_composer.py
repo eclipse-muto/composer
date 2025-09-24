@@ -40,14 +40,14 @@ class MutoComposer(Node):
 
         self.declare_parameter("stack_topic", "stack")
         self.declare_parameter("twin_url", "sandbox.composiv.ai")
-        self.declare_parameter("twin_namespace", "org.eclipse.muto.sandbox")
+        self.declare_parameter("namespace", "org.eclipse.muto.sandbox")
         self.declare_parameter("name", "example-01")
 
         self.twin_url = (
             self.get_parameter("twin_url").get_parameter_value().string_value
         )
         self.twin_namespace = (
-            self.get_parameter("twin_namespace").get_parameter_value().string_value
+            self.get_parameter("namespace").get_parameter_value().string_value
         )
         self.name = self.get_parameter("name").get_parameter_value().string_value
         self.next_stack_topic = (
