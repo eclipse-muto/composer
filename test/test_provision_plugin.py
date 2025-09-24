@@ -338,13 +338,23 @@ class TestMutoProvisionPlugin(unittest.TestCase):
         self.node.install_dependencies()
 
         expected_calls = [
-            call(["rosdep", "update"], check=True),
+            call(
+                [
+                    "rosdep",
+                    "update",
+                    "--rosdistro",
+                    "humble",
+                    "--include-eol-distros",
+                ],
+                check=True,
+                cwd="/mock/workspace",
+            ),
             call(
                 [
                     "rosdep",
                     "install",
                     "--from-path",
-                    ".",
+                    "/mock/workspace",
                     "--ignore-src",
                     "-r",
                     "-y",

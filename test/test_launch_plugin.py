@@ -108,8 +108,11 @@ class TestLaunchPlugin(unittest.TestCase):
         mock_stack_manifest.assert_not_called()
 
     @patch("os.walk")
-    @patch("os.path")
-    def test_find_file(self, mock_path, mock_walk):
+    @patch("os.path.isfile")
+    @patch("os.path.join")
+    def test_find_file(self, mock_join, mock_isfile, mock_walk):
+        mock_isfile.return_value = False  # Force the method to use os.walk
+        mock_join.side_effect = lambda *args: "/".join(args)
         mock_walk.return_value = [
             ("/ws", ("muto",), ("src", "test")),
             ("/ws/muto", (), ("composer",)),
@@ -120,11 +123,13 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertIsNotNone(returned_value)
         mock_walk.assert_called_once_with("/ws")
         self.assertEqual(self.node.get_logger().info.call_count, 2)
-        mock_path.assert_not_called()
 
     @patch("os.walk")
-    @patch("os.path")
-    def test_find_file_not_found(self, mock_path, mock_walk):
+    @patch("os.path.isfile")
+    @patch("os.path.join")
+    def test_find_file_not_found(self, mock_join, mock_isfile, mock_walk):
+        mock_isfile.return_value = False  # Force the method to use os.walk
+        mock_join.side_effect = lambda *args: "/".join(args)
         mock_walk.return_value = [
             ("/ws", ("muto",), ("src", "test")),
             ("/ws/muto", (), ("composer",)),
@@ -138,7 +143,6 @@ class TestLaunchPlugin(unittest.TestCase):
         self.node.get_logger().warning.assert_called_once_with(
             "File 'muto_composer' not found under '/ws'."
         )
-        mock_path.assert_not_called()
 
     @patch("subprocess.run")
     @patch("os.environ.update")
@@ -224,7 +228,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertFalse(response.success)
         self.assertEqual(response.err_msg, "Start flag not set in request.")
 
-    @patch("asyncio.run_coroutine_threadsafe")
+    @patch("subprocess.Popen")
     @patch.object(MutoDefaultLaunchPlugin, "find_file")
     @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
@@ -233,7 +237,7 @@ class TestLaunchPlugin(unittest.TestCase):
         mock_launch_plugin,
         mock_source_workspace,
         mock_find_file,
-        mock_patch_asyncio,
+        mock_popen,
     ):
         response = mock_launch_plugin.response
         response.success = None
@@ -245,11 +249,12 @@ class TestLaunchPlugin(unittest.TestCase):
             "mock_launch_description_source"
         )
         self.node.launch_arguments = ["test:=test_args"]
+        mock_find_file.return_value = "/path/to/launch_file.py"
 
         self.node.handle_start(request, response)
         mock_source_workspace.assert_called_once_with()
         mock_find_file.assert_called_once()
-        mock_patch_asyncio.assert_called_once()
+        mock_popen.assert_called_once()
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
@@ -398,9 +403,9 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertEqual(response.err_msg, "Start flag not set in request.")
         mock_core_twin.assert_not_called()
 
-    @patch("composer.plugins.launch_plugin.Ros2LaunchParent.kill")
+    @patch.object(MutoDefaultLaunchPlugin, "_terminate_launch_process")
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
-    def test_handle_kill(self, mock_launch_plugin, mock_ros_launch_kill):
+    def test_handle_kill(self, mock_launch_plugin, mock_terminate):
         self.node.set_stack_cli = MagicMock()
         self.node.current_stack.stack_id = "test_stack_id"
         self.node.current_stack.name = "test_stack"
@@ -415,12 +420,17 @@ class TestLaunchPlugin(unittest.TestCase):
 
         self.node.handle_kill(request, response)
 
-        self.node.get_logger().info.assert_called_once_with(
+        # Expect two info calls: one for kill request, one for success
+        self.assertEqual(self.node.get_logger().info.call_count, 2)
+        self.node.get_logger().info.assert_any_call(
+            "Kill requested; current launch PID=None"
+        )
+        self.node.get_logger().info.assert_any_call(
             "Launch process killed successfully."
         )
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "Handle kill success")
-        mock_ros_launch_kill.assert_called_once_with()
+        mock_terminate.assert_called_once_with()
 
     @patch.object(MutoDefaultLaunchPlugin, "run_script")
     @patch.object(MutoDefaultLaunchPlugin, "find_file")
@@ -447,7 +457,12 @@ class TestLaunchPlugin(unittest.TestCase):
         )
         mock_run_script.assert_called_once_with(mock_find_file())
 
-        self.node.get_logger().info.assert_called_once_with(
+        # Expect two info calls: one for kill request, one for success
+        self.assertEqual(self.node.get_logger().info.call_count, 2)
+        self.node.get_logger().info.assert_any_call(
+            "Kill requested; current launch PID=None"
+        )
+        self.node.get_logger().info.assert_any_call(
             "Kill script executed successfully."
         )
         self.assertTrue(response.success)
