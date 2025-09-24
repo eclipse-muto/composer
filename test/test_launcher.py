@@ -138,7 +138,11 @@ class TestLauncher(unittest.TestCase):
             [call(1234, signal.SIGKILL), call(5678, signal.SIGKILL)], any_order=True
         )
         self.assertEqual(ros2launch_parent._active_nodes, [])
-        mock_logger.get_logger().info.assert_called_with(
+        # Check that both nodes were logged (order may vary due to parallel execution)
+        mock_logger.get_logger().info.assert_any_call(
+            "Sent SIGKILL to process node1 (PID 1234)"
+        )
+        mock_logger.get_logger().info.assert_any_call(
             "Sent SIGKILL to process node2 (PID 5678)"
         )
 
