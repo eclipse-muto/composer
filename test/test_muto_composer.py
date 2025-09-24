@@ -14,6 +14,7 @@
 import unittest
 import rclpy
 import json
+import base64
 from composer.muto_composer import MutoComposer
 from unittest.mock import MagicMock, patch
 from muto_msgs.srv import CoreTwin
@@ -442,7 +443,47 @@ class TestMutoComposer(unittest.TestCase):
         self.node.determine_execution_path()
 
         self.node.pipeline_execute.assert_called_once_with(
-            self.node.method, {"should_run_native": True, "should_run_launch": True}
+            self.node.method,
+            {"should_run_provision": True, "should_run_launch": True},
+        )
+
+    def test_extract_stack_from_solution(self):
+        stack_payload = {"name": "decoded", "artifact": {}}
+        encoded = base64.b64encode(json.dumps(stack_payload).encode("utf-8")).decode("ascii")
+        solution_payload = {
+            "metadata": {},
+            "spec": {
+                "components": [
+                    {
+                        "properties": {
+                            "type": "stack",
+                            "data": encoded,
+                        }
+                    }
+                ]
+            }
+        }
+
+        decoded = self.node._extract_stack_from_solution(solution_payload)
+        self.assertEqual(decoded, stack_payload)
+
+    def test_determine_execution_path_with_artifact(self):
+        artifact_stack = {
+            "artifact": {
+                "type": "archive",
+                "data": "ZHVtbXk=",
+                "filename": "dummy.tar.gz",
+            }
+        }
+        self.node.current_stack = {}
+        self.node.next_stack = json.dumps(artifact_stack)
+        self.node.pipeline_execute = MagicMock()
+
+        self.node.determine_execution_path()
+
+        self.node.pipeline_execute.assert_called_once_with(
+            self.node.method,
+            {"should_run_provision": True, "should_run_launch": True},
         )
 
     @patch("composer.muto_composer.Stack")

@@ -48,7 +48,7 @@ The Composer package consists of the following main components:
   - **Pipeline**: Manages the execution of sequences of steps defined in the pipeline configuration.
 - **Plugins**
   - **Compose Plugin**: Parses and publishes stack manifests.
-  - **Native Plugin**: Handles workspace preparation, including cloning repositories and building.
+  - **Provision Plugin**: Handles workspace preparation, including cloning repositories and building.
   - **Launch Plugin**: Manages the launching and killing of stacks.
 - **Introspection Tools**: Tools for visualizing and debugging launch descriptions and pipelines.
 
@@ -297,11 +297,11 @@ def generate_launch_description():
         ],
     )
 
-    node_native_plugin = Node(
+    node_provision_plugin = Node(
         namespace=LaunchConfiguration("muto_namespace"),
-        name="native_plugin",
+        name="provision_plugin",
         package="composer",
-        executable="native_plugin",
+        executable="provision_plugin",
         output="screen",
         parameters=[
             muto_params,
@@ -342,7 +342,7 @@ def generate_launch_description():
     ld.add_action(node_twin)
     ld.add_action(node_composer)
     ld.add_action(node_compose_plugin)
-    ld.add_action(node_native_plugin)
+    ld.add_action(node_provision_plugin)
     ld.add_action(node_launch_plugin)
     # ld.add_action(launch_introspection)
 
@@ -377,7 +377,7 @@ ros2 topic pub ...
 Composer's functionality can be extended through plugins. The default plugins included are:
 
 - **Compose Plugin**: Processes incoming stacks and publishes composed stacks.
-- **Native Plugin**: Handles cloning repositories, checking out branches, and building workspaces.
+- **Provision Plugin**: Handles cloning repositories, checking out branches, and building workspaces.
 - **Launch Plugin**: Manages the starting and stopping of stacks, including running launch files or scripts.
 
 ### Adding a Plugin

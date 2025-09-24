@@ -3,14 +3,14 @@ graph TD
     %% Nodes
     MC[MutoComposer Node]
     CP[ComposePlugin Node]
-    NP[NativePlugin Node]
+    PP[ProvisionPlugin Node]
     LP[LaunchPlugin Node]
     R[Router]
     S([Stack Topic])
     RS([Raw Stack Topic])
     CS([Composed Stack Topic])
     CPS[MutoCompose Service]
-    NPS[MutoNative Service]
+    PPS[MutoProvision Service]
     SPS[MutoStartStack Service]
     KPS[MutoKillStack Service]
     APS[MutoApplyStack Service]
@@ -22,18 +22,18 @@ graph TD
     S -->|Publishes stack message| MC
     MC -->|Publishes raw stack| RS
     CP -->|Publishes composed stack| CS
-    CS -->|Subscribes| NP
+    CS -->|Subscribes| PP
     CS -->|Subscribes| LP
 
     %% Services
     MC -->|Uses Router| R
     R -->|Routes to pipelines| CP
-    R -->|Routes to pipelines| NP
+    R -->|Routes to pipelines| PP
     R -->|Routes to pipelines| LP
 
     %% Service Providers
     CP -.->|Provides| CPS
-    NP -.->|Provides| NPS
+    PP -.->|Provides| PPS
     LP -.->|Provides| SPS
     LP -.->|Provides| KPS
     LP -.->|Provides| APS

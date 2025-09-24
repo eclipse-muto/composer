@@ -11,6 +11,7 @@
 #   Composiv.ai - initial API and implementation
 #
 
+import json
 import os
 import subprocess
 import unittest
@@ -18,10 +19,10 @@ from unittest.mock import MagicMock, call, patch
 
 import rclpy
 
-from composer.plugins.native_plugin import WORKSPACES_PATH, MutoDefaultNativePlugin
+from composer.plugins.provision_plugin import WORKSPACES_PATH, MutoProvisionPlugin
 
 
-class TestMutoDefaultNativePlugin(unittest.TestCase):
+class TestMutoProvisionPlugin(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
@@ -32,20 +33,22 @@ class TestMutoDefaultNativePlugin(unittest.TestCase):
         rclpy.shutdown()
 
     def setUp(self):
-        self.node = MutoDefaultNativePlugin()
+        self.node = MutoProvisionPlugin()
         self.node.get_logger = MagicMock()
         self.node.current_stack = MagicMock()
         self.node.current_stack.name = "Test Stack"
         self.node.current_stack.url = "http://example.com/repo.git"
         self.node.current_stack.branch = "main"
+        self.node.current_stack.stack = json.dumps({})
+        self.node.current_stack.source = json.dumps({})
 
     def tearDown(self):
         self.node.destroy_node()
 
-    @patch.object(MutoDefaultNativePlugin, "build_workspace")
-    @patch.object(MutoDefaultNativePlugin, "install_dependencies")
-    @patch.object(MutoDefaultNativePlugin, "from_git")
-    def test_handle_native_start_true_not_up_to_date(
+    @patch.object(MutoProvisionPlugin, "build_workspace")
+    @patch.object(MutoProvisionPlugin, "install_dependencies")
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_start_true_not_up_to_date(
         self, mock_from_git, mock_install_dependencies, mock_build_workspace
     ):
         request = MagicMock()
@@ -54,9 +57,12 @@ class TestMutoDefaultNativePlugin(unittest.TestCase):
         self.node.current_stack = MagicMock()
         self.node.current_stack.url = "http://github.com/composer.git"
         self.node.current_stack.branch = "main"
+        self.node.current_stack.stack = json.dumps({})
+        self.node.current_stack.source = json.dumps({})
+        self.node.current_stack.name = "Test Stack"
         self.node.is_up_to_date = False
 
-        self.node.handle_native(request, response)
+        self.node.handle_provision(request, response)
 
         mock_from_git.assert_called_once_with(
             repo_url=self.node.current_stack.url,
@@ -67,10 +73,10 @@ class TestMutoDefaultNativePlugin(unittest.TestCase):
         self.assertEqual(response.err_msg, "Successful")
         self.assertTrue(response.success)
 
-    @patch.object(MutoDefaultNativePlugin, "build_workspace")
-    @patch.object(MutoDefaultNativePlugin, "install_dependencies")
-    @patch.object(MutoDefaultNativePlugin, "from_git")
-    def test_handle_native_start_true_up_to_date(
+    @patch.object(MutoProvisionPlugin, "build_workspace")
+    @patch.object(MutoProvisionPlugin, "install_dependencies")
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_start_true_up_to_date(
         self, mock_from_git, mock_install_dependencies, mock_build_workspace
     ):
         request = MagicMock()
@@ -79,9 +85,12 @@ class TestMutoDefaultNativePlugin(unittest.TestCase):
         self.node.current_stack = MagicMock()
         self.node.current_stack.url = "http://github.com/composer.git"
         self.node.current_stack.branch = "main"
+        self.node.current_stack.stack = json.dumps({})
+        self.node.current_stack.source = json.dumps({})
+        self.node.current_stack.name = "Test Stack"
         self.node.is_up_to_date = True
 
-        self.node.handle_native(request, response)
+        self.node.handle_provision(request, response)
 
         mock_from_git.assert_called_once_with(
             repo_url=self.node.current_stack.url,
@@ -92,36 +101,115 @@ class TestMutoDefaultNativePlugin(unittest.TestCase):
         self.assertEqual(response.err_msg, "Successful")
         self.assertTrue(response.success)
 
-    def test_handle_native_start_false(self):
+    @patch.object(MutoProvisionPlugin, "build_workspace")
+    @patch.object(MutoProvisionPlugin, "install_dependencies")
+    @patch.object(MutoProvisionPlugin, "from_archive")
+    def test_handle_provision_archive_not_up_to_date(
+        self, mock_from_archive, mock_install_dependencies, mock_build_workspace
+    ):
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        artifact_manifest = {
+            "artifact": {
+                "type": "archive",
+                "data": "ZHVtbXk=",
+            }
+        }
+        self.node.current_stack.stack = json.dumps(artifact_manifest)
+        self.node.current_stack.url = ""
+
+        def mark_dirty(_):
+            self.node.is_up_to_date = False
+
+        mock_from_archive.side_effect = mark_dirty
+
+        self.node.handle_provision(request, response)
+
+        mock_from_archive.assert_called_once()
+        mock_install_dependencies.assert_called_once()
+        mock_build_workspace.assert_called_once()
+        self.assertTrue(response.success)
+
+    @patch.object(MutoProvisionPlugin, "build_workspace")
+    @patch.object(MutoProvisionPlugin, "install_dependencies")
+    @patch.object(MutoProvisionPlugin, "from_archive")
+    def test_handle_provision_archive_up_to_date(
+        self, mock_from_archive, mock_install_dependencies, mock_build_workspace
+    ):
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        artifact_manifest = {
+            "artifact": {
+                "type": "archive",
+                "data": "ZHVtbXk=",
+            }
+        }
+        self.node.current_stack.stack = json.dumps(artifact_manifest)
+        self.node.current_stack.url = ""
+
+        def mark_clean(_):
+            self.node.is_up_to_date = True
+
+        mock_from_archive.side_effect = mark_clean
+
+        self.node.handle_provision(request, response)
+
+        mock_from_archive.assert_called_once()
+        mock_install_dependencies.assert_not_called()
+        mock_build_workspace.assert_not_called()
+        self.assertTrue(response.success)
+
+    def test_handle_provision_no_artifact_or_repo(self):
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        self.node.current_stack = MagicMock()
+        self.node.current_stack.url = ""
+        self.node.current_stack.stack = json.dumps({})
+        self.node.current_stack.name = "Test Stack"
+
+        result = self.node.handle_provision(request, response)
+
+        self.assertFalse(result.success)
+        self.assertEqual(
+            result.err_msg,
+            "Stack does not define a repository or archive artifact.",
+        )
+
+    def test_handle_provision_start_false(self):
         request = MagicMock()
         request.start = False
         response = MagicMock()
 
-        self.node.handle_native(request, response)
+        self.node.handle_provision(request, response)
 
         self.assertEqual(response.err_msg, "Start flag not set in request.")
         self.assertFalse(response.success)
 
-    def test_handle_native_no_current_stack(self):
+    def test_handle_provision_no_current_stack(self):
         request = MagicMock()
         request.start = True
         response = MagicMock()
         self.node.current_stack = None
 
-        self.node.handle_native(request, response)
+        self.node.handle_provision(request, response)
 
         self.assertEqual(response.err_msg, "No current stack received.")
         self.assertFalse(response.success)
 
-    @patch.object(MutoDefaultNativePlugin, "from_git")
-    def test_handle_native_exception(self, mock_from_git):
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_exception(self, mock_from_git):
         request = MagicMock()
         request.start = True
         response = MagicMock()
         self.node.current_stack = MagicMock()
+        self.node.current_stack.stack = json.dumps({})
+        self.node.current_stack.name = "Test Stack"
         mock_from_git.side_effect = Exception("Test Exception")
 
-        self.node.handle_native(request, response)
+        self.node.handle_provision(request, response)
 
         self.assertFalse(response.success)
         self.assertEqual(response.err_msg, "Error: Test Exception")
@@ -129,7 +217,7 @@ class TestMutoDefaultNativePlugin(unittest.TestCase):
     @patch("os.makedirs")
     @patch("shutil.rmtree")
     @patch("os.path.exists")
-    @patch.object(MutoDefaultNativePlugin, "checkout_branch")
+    @patch.object(MutoProvisionPlugin, "checkout_branch")
     @patch("subprocess.run")
     def test_clone_repository(
         self,
@@ -285,9 +373,9 @@ class TestMutoDefaultNativePlugin(unittest.TestCase):
 
     @patch("os.path.exists")
     @patch("os.path.join")
-    @patch.object(MutoDefaultNativePlugin, "checkout_and_check_submodules")
-    @patch.object(MutoDefaultNativePlugin, "clone_repository")
-    @patch.object(MutoDefaultNativePlugin, "update_repository")
+    @patch.object(MutoProvisionPlugin, "checkout_and_check_submodules")
+    @patch.object(MutoProvisionPlugin, "clone_repository")
+    @patch.object(MutoProvisionPlugin, "update_repository")
     def test_from_git(
         self,
         mock_update_repository,
@@ -309,9 +397,9 @@ class TestMutoDefaultNativePlugin(unittest.TestCase):
 
     @patch("os.path.exists")
     @patch("os.path.join")
-    @patch.object(MutoDefaultNativePlugin, "checkout_and_check_submodules")
-    @patch.object(MutoDefaultNativePlugin, "clone_repository")
-    @patch.object(MutoDefaultNativePlugin, "update_repository")
+    @patch.object(MutoProvisionPlugin, "checkout_and_check_submodules")
+    @patch.object(MutoProvisionPlugin, "clone_repository")
+    @patch.object(MutoProvisionPlugin, "update_repository")
     def test_from_git_no_current_stack(
         self,
         mock_update_repository,

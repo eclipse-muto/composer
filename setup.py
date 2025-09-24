@@ -39,7 +39,7 @@ setup(
         "console_scripts": [
             "muto_composer = composer.muto_composer:main",
             "compose_plugin = composer.plugins.compose_plugin:main",
-            "native_plugin = composer.plugins.native_plugin:main",
+            "provision_plugin = composer.plugins.provision_plugin:main",
             "launch_plugin = composer.plugins.launch_plugin:main",
             "daemon = composer.introspection.muto_daemon:main",
         ],
