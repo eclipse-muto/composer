@@ -74,7 +74,7 @@ class TestLaunchPlugin(unittest.TestCase):
                 "stackId": "org.eclipse.muto.sandbox:muto_repo_test_stack",
                 "url": "https://test_url",
                 "source": {
-                    "ros": "/opt/ros/humble/setup.bash",
+                    "ros": f"/opt/ros/{os.environ.get('ROS_DISTRO', 'humble')}/setup.bash",
                     "workspace": "/workspaces/install/setup.bash",
                 },
                 "args": {

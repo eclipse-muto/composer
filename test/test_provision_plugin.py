@@ -343,7 +343,7 @@ class TestMutoProvisionPlugin(unittest.TestCase):
                     "rosdep",
                     "update",
                     "--rosdistro",
-                    "humble",
+                    os.environ.get("ROS_DISTRO", "humble"),
                     "--include-eol-distros",
                 ],
                 check=True,

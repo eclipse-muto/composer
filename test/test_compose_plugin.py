@@ -11,6 +11,7 @@
 #   Composiv.ai - initial API and implementation
 #
 
+import os
 import unittest
 import json
 from unittest.mock import MagicMock, patch
@@ -39,8 +40,9 @@ class TestComposePlugin(unittest.TestCase):
 
     def test_handle_raw_stack(self):
         self.node.incoming_stack = None
+        distro = os.environ.get('ROS_DISTRO', 'humble')
         stack_msg = String(
-            data='{"name": "Muto Run Rototui from repo", "context": "eclipse_muto", "stackId": "org.eclipse.muto.sandbox:muto_repo_test_stack",  "url": "https://test_url",  "source": {"ros": "/opt/ros/humble/setup.bash", "workspace": "/workspaces/install/setup.bash"}, "args": {"launch_muto": "false", "launch_fms": "false", "launch_record_rosbag": "false", "launch_safety_plc": "false", "launch_logger": "false", "launch_css": "false", "vehicle_model": "rototui_vehicle", "sensor_model": "rototui_sensor_kit", "lanelet2_map_file": "64_prod_lanelet_finetuning.osm", "pointcloud_map_file": "pointcloud_map.pcd", "rviz_respawn": "false"} }'
+            data=f'{{"name": "Muto Run Rototui from repo", "context": "eclipse_muto", "stackId": "org.eclipse.muto.sandbox:muto_repo_test_stack",  "url": "https://test_url",  "source": {{"ros": "/opt/ros/{distro}/setup.bash", "workspace": "/workspaces/install/setup.bash"}}, "args": {{"launch_muto": "false", "launch_fms": "false", "launch_record_rosbag": "false", "launch_safety_plc": "false", "launch_logger": "false", "launch_css": "false", "vehicle_model": "rototui_vehicle", "sensor_model": "rototui_sensor_kit", "lanelet2_map_file": "64_prod_lanelet_finetuning.osm", "pointcloud_map_file": "pointcloud_map.pcd", "rviz_respawn": "false"}} }}'
         )
         self.node.handle_raw_stack(stack_msg)
         self.assertEqual(self.node.incoming_stack, json.loads(stack_msg.data))
@@ -111,8 +113,9 @@ class TestComposePlugin(unittest.TestCase):
 
     @patch("composer.plugins.compose_plugin.StackManifest")
     def test_parse_stack(self, mock_stack_manifest):
+        distro = os.environ.get('ROS_DISTRO', 'humble')
         stack_msg = String(
-            data='{"name": "Muto Run Rototui from repo", "context": "eclipse_muto", "stackId": "org.eclipse.muto.sandbox:muto_repo_test_stack",  "url": "https://test_url",  "source": {"ros": "/opt/ros/humble/setup.bash", "workspace": "/workspaces/install/setup.bash"}, "args": {"launch_muto": "false", "launch_fms": "false", "launch_record_rosbag": "false", "launch_safety_plc": "false", "launch_logger": "false", "launch_css": "false", "vehicle_model": "rototui_vehicle", "sensor_model": "rototui_sensor_kit", "lanelet2_map_file": "64_prod_lanelet_finetuning.osm", "pointcloud_map_file": "pointcloud_map.pcd", "rviz_respawn": "false"} }'
+            data=f'{{"name": "Muto Run Rototui from repo", "context": "eclipse_muto", "stackId": "org.eclipse.muto.sandbox:muto_repo_test_stack",  "url": "https://test_url",  "source": {{"ros": "/opt/ros/{distro}/setup.bash", "workspace": "/workspaces/install/setup.bash"}}, "args": {{"launch_muto": "false", "launch_fms": "false", "launch_record_rosbag": "false", "launch_safety_plc": "false", "launch_logger": "false", "launch_css": "false", "vehicle_model": "rototui_vehicle", "sensor_model": "rototui_sensor_kit", "lanelet2_map_file": "64_prod_lanelet_finetuning.osm", "pointcloud_map_file": "pointcloud_map.pcd", "rviz_respawn": "false"}} }}'
         )
         self.node.incoming_stack = json.loads(stack_msg.data)
 
