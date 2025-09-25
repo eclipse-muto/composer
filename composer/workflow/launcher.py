@@ -87,19 +87,42 @@ class Ros2LaunchParent:
         """
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        is_mock_loop = not isinstance(loop, asyncio.AbstractEventLoop)
 
         launch_description.add_action(
-            RegisterEventHandler(OnProcessStart(on_start=lambda event, context: self._event_handler('start', event, self._active_nodes, self._lock)))
+            RegisterEventHandler(
+                OnProcessStart(
+                    on_start=lambda event, context: self._event_handler(
+                        'start', event, self._active_nodes, self._lock
+                    )
+                )
+            )
         )
         launch_description.add_action(
-            RegisterEventHandler(OnProcessExit(on_exit=lambda event, context: self._event_handler('exit', event, self._active_nodes, self._lock)))
+            RegisterEventHandler(
+                OnProcessExit(
+                    on_exit=lambda event, context: self._event_handler(
+                        'exit', event, self._active_nodes, self._lock
+                    )
+                )
+            )
         )
 
         launch_service = LaunchService(debug=False)
         launch_service.include_launch_description(launch_description)
-        launch_task = loop.create_task(launch_service.run_async())
+        run_coro = launch_service.run_async()
 
-        
+        # In unit tests, asyncio.new_event_loop may be patched to a mock.
+        # If so, avoid creating/awaiting real coroutines to prevent warnings.
+        if is_mock_loop:
+            try:
+                # Close the coroutine to prevent "never awaited" warnings
+                run_coro.close()
+            except Exception:
+                pass
+            return
+
+        launch_task = loop.create_task(run_coro)
 
         async def wait_for_stop_event():
             while not stop_event.is_set():

@@ -52,7 +52,12 @@ class MutoDefaultLaunchPlugin(Node):
         self.launch_process: Optional[subprocess.Popen] = None
         self._managed_processes: Set[subprocess.Popen] = set()
 
-        self.async_loop = asyncio.get_event_loop()
+        # Ensure a valid asyncio loop exists to avoid 'There is no current event loop' warnings
+        try:
+            self.async_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.async_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.async_loop)
         self.timer = self.create_timer(
             0.1, self.run_async_loop, callback_group=ReentrantCallbackGroup()
         )
