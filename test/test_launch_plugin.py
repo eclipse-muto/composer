@@ -20,6 +20,7 @@ from unittest.mock import MagicMock, patch
 import rclpy
 
 from composer.plugins.launch_plugin import MutoDefaultLaunchPlugin
+from muto_msgs.srv import LaunchPlugin
 
 
 class TestLaunchPlugin(unittest.TestCase):
@@ -550,6 +551,558 @@ class TestLaunchPlugin(unittest.TestCase):
             "No valid stack data found for apply operation.",
         )
         mock_stack.assert_not_called()
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch.object(MutoDefaultLaunchPlugin, "_handle_stack_json_start")
+    @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_start_stack_json_content_type(self, mock_launch_plugin, mock_source_workspace, mock_handle_json, mock_get_payload):
+        """Test handle_start with stack/json content_type."""
+        request = mock_launch_plugin.request
+        request.start = True
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Mock the payload parsing to return stack/json type
+        mock_get_payload.return_value = ("stack/json", {"node": [{"name": "test_node"}]}, None, None)
+        mock_handle_json.return_value = True
+
+        self.node.handle_start(request, response)
+
+        mock_source_workspace.assert_called_once()
+        mock_get_payload.assert_called_once()
+        mock_handle_json.assert_called_once()
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch.object(MutoDefaultLaunchPlugin, "_handle_archive_start")
+    @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_start_stack_archive_content_type(self, mock_launch_plugin, mock_source_workspace, mock_handle_archive, mock_get_payload):
+        """Test handle_start with stack/archive content_type."""
+        request = mock_launch_plugin.request
+        request.start = True
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Mock the payload parsing to return stack/archive type
+        mock_get_payload.return_value = ("stack/archive", {"data": "dGVzdCBkYXRh"}, "launch/test.launch.py", "launch")
+        mock_handle_archive.return_value = True
+
+        self.node.handle_start(request, response)
+
+        mock_source_workspace.assert_called_once()
+        mock_get_payload.assert_called_once()
+        mock_handle_archive.assert_called_once_with("launch/test.launch.py")
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch.object(MutoDefaultLaunchPlugin, "_handle_raw_stack_start")
+    @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_start_raw_payload_type(self, mock_launch_plugin, mock_source_workspace, mock_handle_raw, mock_get_payload):
+        """Test handle_start with raw payload (node/composable)."""
+        request = mock_launch_plugin.request
+        request.start = True
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Mock the payload parsing to return raw type
+        mock_get_payload.return_value = ("raw", {"node": [{"name": "test_node"}]}, None, None)
+        mock_handle_raw.return_value = True
+
+        self.node.handle_start(request, response)
+
+        mock_source_workspace.assert_called_once()
+        mock_get_payload.assert_called_once()
+        mock_handle_raw.assert_called_once()
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch.object(MutoDefaultLaunchPlugin, "_handle_legacy_script_start")
+    @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_start_unknown_content_type(self, mock_launch_plugin, mock_source_workspace, mock_handle_legacy, mock_get_payload):
+        """Test handle_start with unknown content_type falls back to legacy."""
+        request = mock_launch_plugin.request
+        request.start = True
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Mock the payload parsing to return None (unknown type)
+        mock_get_payload.return_value = (None, None, None, None)
+        mock_handle_legacy.return_value = True
+
+        self.node.handle_start(request, response)
+
+        mock_source_workspace.assert_called_once()
+        mock_get_payload.assert_called_once()
+        mock_handle_legacy.assert_called_once()
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch.object(MutoDefaultLaunchPlugin, "_handle_legacy_script_start")
+    @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_start_missing_content_type(self, mock_launch_plugin, mock_source_workspace, mock_handle_legacy, mock_get_payload):
+        """Test handle_start with missing content_type falls back to legacy."""
+        request = mock_launch_plugin.request
+        request.start = True
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Mock the payload parsing to return None (missing content_type)
+        mock_get_payload.return_value = (None, None, None, None)
+        mock_handle_legacy.return_value = True
+
+        self.node.handle_start(request, response)
+
+        mock_source_workspace.assert_called_once()
+        mock_get_payload.assert_called_once()
+        mock_handle_legacy.assert_called_once()
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch.object(MutoDefaultLaunchPlugin, "_handle_legacy_script_start")
+    @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_start_invalid_json_payload(self, mock_launch_plugin, mock_source_workspace, mock_handle_legacy, mock_get_payload):
+        """Test handle_start with invalid JSON payload falls back to legacy."""
+        request = mock_launch_plugin.request
+        request.start = True
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Mock the payload parsing to return None (invalid payload)
+        mock_get_payload.return_value = (None, None, None, None)
+        mock_handle_legacy.return_value = True
+
+        self.node.handle_start(request, response)
+
+        mock_source_workspace.assert_called_once()
+        mock_get_payload.assert_called_once()
+        mock_handle_legacy.assert_called_once()
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch.object(MutoDefaultLaunchPlugin, "_handle_raw_stack_kill")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_kill_stack_json_content_type(self, mock_launch_plugin, mock_handle_raw_kill, mock_get_payload):
+        """Test handle_kill with stack/json content_type."""
+        request = mock_launch_plugin.request
+        request.start = True
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Mock the payload parsing to return stack/json type
+        mock_get_payload.return_value = ("stack/json", {"node": [{"name": "test_node"}]}, None, None)
+        mock_handle_raw_kill.return_value = True
+
+        self.node.handle_kill(request, response)
+
+        mock_get_payload.assert_called_once()
+        mock_handle_raw_kill.assert_called_once()
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "Handle kill success")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch.object(MutoDefaultLaunchPlugin, "_handle_archive_kill")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_kill_stack_archive_content_type(self, mock_launch_plugin, mock_handle_archive_kill, mock_get_payload):
+        """Test handle_kill with stack/archive content_type."""
+        request = mock_launch_plugin.request
+        request.start = True
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Mock the payload parsing to return stack/archive type
+        mock_get_payload.return_value = ("stack/archive", {"data": "dGVzdCBkYXRh"}, "launch/test.launch.py", "launch")
+        mock_handle_archive_kill.return_value = True
+
+        self.node.handle_kill(request, response)
+
+        mock_get_payload.assert_called_once()
+        mock_handle_archive_kill.assert_called_once_with("launch/test.launch.py")
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "Handle kill success")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch.object(MutoDefaultLaunchPlugin, "_handle_raw_stack_kill")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_kill_raw_payload_type(self, mock_launch_plugin, mock_handle_raw_kill, mock_get_payload):
+        """Test handle_kill with raw payload (node/composable)."""
+        request = mock_launch_plugin.request
+        request.start = True
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Mock the payload parsing to return raw type
+        mock_get_payload.return_value = ("raw", {"composable": [{"name": "test_composable"}]}, None, None)
+        mock_handle_raw_kill.return_value = True
+
+        self.node.handle_kill(request, response)
+
+        mock_get_payload.assert_called_once()
+        mock_handle_raw_kill.assert_called_once()
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "Handle kill success")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch("composer.plugins.launch_plugin.Stack")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_apply_stack_json_content_type(self, mock_launch_plugin, mock_stack, mock_get_payload):
+        """Test handle_apply with stack/json content_type."""
+        request = mock_launch_plugin.request
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Mock the payload parsing to return stack/json type
+        mock_get_payload.return_value = ("stack/json", {"node": [{"name": "test_node"}]}, None, None)
+
+        self.node.handle_apply(request, response)
+
+        # For stack/json, it uses the stack_data as manifest
+        mock_stack.assert_called_once_with(manifest={"node": [{"name": "test_node"}]})
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch("composer.plugins.launch_plugin.Stack")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_apply_stack_archive_content_type(self, mock_launch_plugin, mock_stack, mock_get_payload):
+        """Test handle_apply with stack/archive content_type."""
+        request = mock_launch_plugin.request
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Mock the payload parsing to return stack/archive type
+        archive_payload = {
+            "metadata": {"name": "test-archive", "content_type": "stack/archive"},
+            "launch": {"data": "dGVzdA=="}
+        }
+        mock_get_payload.return_value = ("stack/archive", archive_payload, "launch/test.launch.py", "launch")
+
+        self.node.handle_apply(request, response)
+
+        # For archive, it uses the full payload
+        mock_stack.assert_called_once_with(manifest=archive_payload)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch("composer.plugins.launch_plugin.Stack")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_apply_raw_payload_type(self, mock_launch_plugin, mock_stack, mock_get_payload):
+        """Test handle_apply with raw payload (node/composable)."""
+        request = mock_launch_plugin.request
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Mock the payload parsing to return raw type
+        mock_get_payload.return_value = ("raw", {"node": [{"name": "test_node"}]}, None, None)
+
+        self.node.handle_apply(request, response)
+
+        mock_stack.assert_called_once_with(manifest={"node": [{"name": "test_node"}]})
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch("composer.plugins.launch_plugin.Stack")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_apply_unknown_content_type(self, mock_launch_plugin, mock_stack, mock_get_payload):
+        """Test handle_apply with unknown content_type uses full payload."""
+        request = mock_launch_plugin.request
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Mock the payload parsing to return None (unknown type)
+        unknown_payload = {
+            "metadata": {"name": "test-unknown", "content_type": "unknown/type"},
+            "custom": {"data": "test"}
+        }
+        mock_get_payload.return_value = (None, None, None, None)
+        self.node.current_stack.stack = json.dumps(unknown_payload)
+
+        self.node.handle_apply(request, response)
+
+        # Should use the full payload as fallback
+        mock_stack.assert_called_once_with(manifest=unknown_payload)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch("composer.plugins.launch_plugin.Stack")
+    def test_handle_apply_stack_archive_content_type(self, mock_stack):
+        """Test handle_apply with stack/archive content_type."""
+        request = LaunchPlugin.Request()
+        response = LaunchPlugin.Response()
+        response.success = None
+        response.err_msg = None
+
+        # Payload with stack/archive content_type
+        archive_payload = {
+            "metadata": {
+                "name": "test-archive-stack",
+                "content_type": "stack/archive"
+            },
+            "launch": {
+                "data": "dGVzdCBkYXRh",
+                "properties": {
+                    "launch_file": "launch/test.launch.py"
+                }
+            }
+        }
+        self.node.current_stack.stack = json.dumps(archive_payload)
+
+        self.node.handle_apply(request, response)
+
+        # For archive, it should use the full payload
+        mock_stack.assert_called_once_with(manifest=archive_payload)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch("composer.plugins.launch_plugin.Stack")
+    def test_handle_apply_raw_payload_type(self, mock_stack):
+        """Test handle_apply with raw payload (node/composable)."""
+        request = LaunchPlugin.Request()
+        response = LaunchPlugin.Response()
+        response.success = None
+        response.err_msg = None
+
+        # Raw payload with node
+        raw_payload = {
+            "node": [{"name": "test_node"}]
+        }
+        self.node.current_stack.stack = json.dumps(raw_payload)
+
+        self.node.handle_apply(request, response)
+
+        mock_stack.assert_called_once_with(manifest=raw_payload)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch("composer.plugins.launch_plugin.Stack")
+    def test_handle_apply_unknown_content_type(self, mock_stack):
+        """Test handle_apply with unknown content_type uses full payload."""
+        request = LaunchPlugin.Request()
+        response = LaunchPlugin.Response()
+        response.success = None
+        response.err_msg = None
+
+        # Payload with unknown content_type
+        unknown_payload = {
+            "metadata": {
+                "name": "test-unknown-stack",
+                "content_type": "unknown/type"
+            },
+            "custom": {
+                "data": "some_data"
+            }
+        }
+        self.node.current_stack.stack = json.dumps(unknown_payload)
+
+        self.node.handle_apply(request, response)
+
+        # Should use the full payload as fallback
+        mock_stack.assert_called_once_with(manifest=unknown_payload)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch("composer.plugins.launch_plugin.Stack")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_apply_raw_payload_type(self, mock_launch_plugin, mock_stack, mock_get_payload):
+        """Test handle_apply with raw payload (node/composable)."""
+        request = mock_launch_plugin.request
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Raw payload with node
+        raw_payload = {
+            "node": [{"name": "test_node"}]
+        }
+        # Mock the payload parsing to return raw type
+        mock_get_payload.return_value = ("raw", raw_payload, None, None)
+
+        self.node.current_stack.stack = json.dumps(raw_payload)
+
+        self.node.handle_apply(request, response)
+
+        mock_stack.assert_called_once_with(manifest=raw_payload)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch("composer.model.stack.Stack")
+    def test_handle_apply_unknown_content_type(self, mock_stack):
+        """Test handle_apply with unknown content_type uses full payload."""
+        request = LaunchPlugin.Request()
+        response = LaunchPlugin.Response()
+        response.success = None
+        response.err_msg = None
+
+        # Payload with unknown content_type
+        unknown_payload = {
+            "metadata": {
+                "name": "test-unknown-stack",
+                "content_type": "unknown/type"
+            },
+            "custom": {
+                "data": "some_data"
+            }
+        }
+        self.node.current_stack.stack = json.dumps(unknown_payload)
+
+        self.node.handle_apply(request, response)
+
+        # Should use the full payload as fallback
+        mock_stack.assert_called_once_with(manifest=unknown_payload)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch("composer.model.stack.Stack")
+    @patch("muto_msgs.srv.LaunchPlugin")
+    def test_handle_apply_raw_payload_type(self, mock_launch_plugin, mock_stack):
+        """Test handle_apply with raw payload (node/composable)."""
+        request = mock_launch_plugin.request
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Raw payload with node
+        raw_payload = {
+            "node": [{"name": "test_node"}]
+        }
+        self.node.current_stack.stack = json.dumps(raw_payload)
+
+        self.node.handle_apply(request, response)
+
+        mock_stack.assert_called_once_with(manifest=raw_payload)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch("composer.model.stack.Stack")
+    @patch("muto_msgs.srv.LaunchPlugin")
+    def test_handle_apply_unknown_content_type(self, mock_launch_plugin, mock_stack):
+        """Test handle_apply with unknown content_type uses full payload."""
+        request = mock_launch_plugin.request
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Payload with unknown content_type
+        unknown_payload = {
+            "metadata": {
+                "name": "test-unknown-stack",
+                "content_type": "unknown/type"
+            },
+            "custom": {
+                "data": "some_data"
+            }
+        }
+        self.node.current_stack.stack = json.dumps(unknown_payload)
+
+        self.node.handle_apply(request, response)
+
+        # Should use the full payload as fallback
+        mock_stack.assert_called_once_with(manifest=unknown_payload)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+        """Test handle_apply with stack/archive content_type."""
+        request = mock_launch_plugin.request
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Payload with stack/archive content_type
+        archive_payload = {
+            "metadata": {
+                "name": "test-archive-stack",
+                "content_type": "stack/archive"
+            },
+            "launch": {
+                "data": "dGVzdCBkYXRh",
+                "properties": {
+                    "launch_file": "launch/test.launch.py"
+                }
+            }
+        }
+        self.node.current_stack.stack = json.dumps(archive_payload)
+
+        self.node.handle_apply(request, response)
+
+        # For archive, it should use the full payload
+        mock_stack.assert_called_once_with(manifest=archive_payload)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch("composer.plugins.launch_plugin.Stack")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_apply_raw_payload_type(self, mock_launch_plugin, mock_stack):
+        """Test handle_apply with raw payload (node/composable)."""
+        request = mock_launch_plugin.request
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Raw payload with node
+        raw_payload = {
+            "node": [{"name": "test_node"}]
+        }
+        self.node.current_stack.stack = json.dumps(raw_payload)
+
+        self.node.handle_apply(request, response)
+
+        mock_stack.assert_called_once_with(manifest=raw_payload)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch("composer.plugins.launch_plugin.Stack")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_apply_unknown_content_type(self, mock_launch_plugin, mock_stack):
+        """Test handle_apply with unknown content_type uses full payload."""
+        request = mock_launch_plugin.request
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+
+        # Payload with unknown content_type
+        unknown_payload = {
+            "metadata": {
+                "name": "test-unknown-stack",
+                "content_type": "unknown/type"
+            },
+            "custom": {
+                "data": "some_data"
+            }
+        }
+        self.node.current_stack.stack = json.dumps(unknown_payload)
+
+        self.node.handle_apply(request, response)
+
+        # Should use the full payload as fallback
+        mock_stack.assert_called_once_with(manifest=unknown_payload)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
 
 
 if __name__ == "__main__":
