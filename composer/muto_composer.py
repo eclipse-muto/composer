@@ -90,7 +90,10 @@ class MutoComposer(Node):
         self.stack_parser = create_stack_parser(self.get_logger())
 
         # Bootstrap
-        self.bootstrap()
+        # DO NOT GET THE CURRENT STACK FROM
+        # TWIN, IT MAY NOT BE THE DEFAULT STACK
+        # SYMPHONY STATES WILL HANDLE THAT
+        #self.bootstrap()
 
     def bootstrap(self):
         """
@@ -195,9 +198,9 @@ class MutoComposer(Node):
                 # Use payload directly as the stack
                 resolved_stack = self.resolve_expression(json.dumps(payload))
                 self.next_stack = resolved_stack
+                self.determine_execution_path()
                 self.publish_next_stack(self.next_stack)
                 self.publish_raw_stack(resolved_stack)
-                self.determine_execution_path()
         except json.JSONDecodeError as e:
             self.get_logger().error(f"Invalid JSON in payload: {e}")
         except KeyError as k:
@@ -234,9 +237,9 @@ class MutoComposer(Node):
                 )
 
                 self.next_stack = resolved_stack
+                self.determine_execution_path()
                 self.publish_next_stack(self.next_stack)
                 self.publish_raw_stack(resolved_stack)
-                self.determine_execution_path()
             else:
                 self.get_logger().warn("Received empty result from service call.")
         except Exception as e:
@@ -284,6 +287,7 @@ class MutoComposer(Node):
         )
         
         has_archive_artifact = next_stack.get("metadata", {}).get("content_type", "") == "stack/archive"
+        has_json_artifact = next_stack.get("metadata", {}).get("content_type", "") == "stack/json"
         artifact_present = next_stack
         if has_archive_artifact:
             self.get_logger().info(f"Artifact details detected: {artifact_present.keys() if isinstance(artifact_present, dict) else artifact_present}")
@@ -292,14 +296,35 @@ class MutoComposer(Node):
             should_run_provision = True
             should_run_launch = True
             self.get_logger().info(
-                "Archive artifact detected; running ProvisionPlugin and LaunchPlugin."
+                "Archive manifest detected; running ProvisionPlugin and LaunchPlugin."
+            )
+        elif has_json_artifact:
+            should_run_provision = False
+            should_run_launch = True
+            ns = next_stack.get("launch", {})
+            csmeta = None 
+            if self.current_stack is not None:
+                csmeta = self.current_stack.get("metadata", None)
+            if csmeta is not None and isinstance(csmeta, dict):
+                merged_stack = self.merge(self.current_stack.get("launch", {}), ns)
+                next_stack["launch"] = merged_stack
+                self.current_stack = next_stack
+            else:
+                merged_stack = self.merge(self.current_stack, ns)
+                next_stack["launch"] = merged_stack
+                self.current_stack = next_stack
+               
+            self.publish_raw_stack(json.dumps(next_stack))  # Publish the merged stack
+
+            self.get_logger().info(
+                "JSON manifest detected; running LaunchPlugin."
             )
         elif is_next_stack_empty and (has_launch_description or has_on_start_and_on_kill):
             # Condition to run ProvisionPlugin
-            should_run_provision = True
+            should_run_provision = False
             should_run_launch = True
             self.get_logger().info(
-                "Conditions met to run ProvisionPlugin and LaunchPlugin."
+                "Legacy stack conditions met to run LaunchPlugin."
             )
         elif not is_next_stack_empty:
             # Condition to merge stacks and bypass ProvisionPlugin
@@ -338,10 +363,11 @@ class MutoComposer(Node):
         Returns:
             dict: The merged stack data.
         """
+        cs = current_stack
         if current_stack is None:
-            return next_stack
+            cs = {}
 
-        stack_1 = Stack(manifest=current_stack)
+        stack_1 = Stack(manifest=cs)
         stack_2 = Stack(manifest=next_stack)
         merged = stack_1.merge(stack_2)
         return merged.manifest

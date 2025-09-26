@@ -444,7 +444,7 @@ class TestMutoComposer(unittest.TestCase):
 
         self.node.pipeline_execute.assert_called_once_with(
             self.node.method,
-            {"should_run_provision": True, "should_run_launch": True},
+            {"should_run_provision": False, "should_run_launch": True},
         )
 
     def test_extract_stack_from_solution(self):
@@ -496,15 +496,7 @@ class TestMutoComposer(unittest.TestCase):
             }
         }
         result = self.node.stack_parser.parse_payload(payload)
-        expected = {
-            "node": [
-                {
-                    "name": "test_node",
-                    "pkg": "test_pkg",
-                    "exec": "test_exec"
-                }
-            ]
-        }
+        expected = payload  # Now returns the full payload
         self.assertEqual(result, expected)
 
     def test_parse_payload_archive_format(self):
@@ -552,7 +544,7 @@ class TestMutoComposer(unittest.TestCase):
             "launch": '{"node": [{"name": "string_node", "pkg": "string_pkg"}]}'
         }
         result = self.node.stack_parser.parse_payload(payload)
-        expected = {"node": [{"name": "string_node", "pkg": "string_pkg"}]}
+        expected = payload  # Now returns the full payload
         self.assertEqual(result, expected)
 
     def test_parse_payload_invalid_direct_stack_json(self):
@@ -564,7 +556,7 @@ class TestMutoComposer(unittest.TestCase):
             "launch": "invalid json string {{{"
         }
         result = self.node.stack_parser.parse_payload(payload)
-        self.assertIsNone(result)
+        self.assertEqual(result, payload)  # Now returns the payload even if launch is invalid
 
     def test_determine_execution_path_with_artifact(self):
         artifact_stack = {
@@ -590,17 +582,25 @@ class TestMutoComposer(unittest.TestCase):
             {"should_run_provision": True, "should_run_launch": True},
         )
 
-    @patch("composer.muto_composer.Stack")
-    def test_merge(self, mock_stack):
-        stack1 = {"node": ["node1"], "composable": ["comp1"]}
-        stack2 = {"node": ["node2"], "args": {"arg1": "value1"}}
+    def test_merge(self):
+        stack1 = {"node": [{"name": "node1", "pkg": "pkg1"}], "composable": [{"name": "comp1", "package": "pkg1"}]}
+        stack2 = {"node": [{"name": "node2", "pkg": "pkg2"}], "arg": [{"name": "arg1", "value": "value1"}]}
 
         merged = self.node.merge(stack1, stack2)
 
-        self.assertEqual(mock_stack.call_count, 2)
+        # Check that merged has the expected structure
+        self.assertIn("node", merged)
+        self.assertIn("composable", merged)
+        self.assertEqual(len(merged["node"]), 2)  # node1 and node2
+        self.assertEqual(len(merged["composable"]), 1)
+        self.assertEqual(merged["composable"][0]["name"], "comp1")
 
         merged = self.node.merge(None, stack2)
-        self.assertEqual(merged, stack2)
+        self.assertIn("node", merged)
+        self.assertEqual(len(merged["node"]), 1)
+        self.assertEqual(merged["node"][0]["name"], "node2")
+        self.assertIn("arg", merged)
+        self.assertEqual(merged["arg"], [{"name": "arg1", "value": "value1"}])
 
     def test_pipeline_execute_valid(self):
         test_pipeline = MagicMock()

@@ -127,9 +127,10 @@ class MutoDefaultLaunchPlugin(Node):
         else:
             return None, None, None, None
 
-    def _handle_stack_json_start(self, stack_data):
+    def _handle_stack_json_start(self, manifest):
         """Handle start for stack/json payload type."""
-        if stack_data:
+        if manifest:
+            stack_data = manifest.get("launch")
             stack = Stack(manifest=stack_data)
             stack.launch(self.launcher)
             return True

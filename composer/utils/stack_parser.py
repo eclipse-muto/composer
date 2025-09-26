@@ -100,17 +100,7 @@ class StackParser:
         content_type = metadata.get("content_type")
         
         if content_type == "stack/json":
-            launch_data = payload.get("launch")
-            if isinstance(launch_data, dict):
-                self.logger.debug("Parsed direct stack/json format")
-                return launch_data
-            elif isinstance(launch_data, str):
-                try:
-                    parsed_data = json.loads(launch_data)
-                    self.logger.debug("Parsed direct stack/json from string")
-                    return parsed_data
-                except json.JSONDecodeError as e:
-                    self.logger.warning(f"Failed to parse stack JSON string: {e}")
+            return payload
                         
         return None
     
