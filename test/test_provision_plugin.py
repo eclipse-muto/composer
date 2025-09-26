@@ -518,3 +518,248 @@ class TestMutoProvisionPlugin(unittest.TestCase):
 
         self.assertFalse(result)
         mock_run.assert_not_called()
+
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_stack_json_content_type(self, mock_from_git):
+        """Test handle_provision with stack/json content_type falls back to git."""
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        
+        # Payload with stack/json content_type
+        json_manifest = {
+            "metadata": {
+                "name": "test-json-stack",
+                "content_type": "stack/json"
+            },
+            "launch": {
+                "node": [{"name": "test_node"}]
+            }
+        }
+        self.node.current_stack.stack = json.dumps(json_manifest)
+        self.node.current_stack.url = "http://example.com/repo.git"
+        self.node.current_stack.branch = "main"
+
+        self.node.handle_provision(request, response)
+
+        # Should call from_git since stack/json doesn't have special provision handling
+        mock_from_git.assert_called_once_with(
+            repo_url="http://example.com/repo.git",
+            branch="main"
+        )
+        self.assertTrue(response.success)
+
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_unknown_content_type(self, mock_from_git):
+        """Test handle_provision with unknown content_type falls back to git."""
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        
+        # Payload with unknown content_type
+        unknown_manifest = {
+            "metadata": {
+                "name": "test-unknown-stack",
+                "content_type": "unknown/type"
+            },
+            "custom": {
+                "data": "some_data"
+            }
+        }
+        self.node.current_stack.stack = json.dumps(unknown_manifest)
+        self.node.current_stack.url = "http://example.com/repo.git"
+        self.node.current_stack.branch = "main"
+
+        self.node.handle_provision(request, response)
+
+        # Should call from_git since unknown content_type doesn't have special handling
+        mock_from_git.assert_called_once_with(
+            repo_url="http://example.com/repo.git",
+            branch="main"
+        )
+        self.assertTrue(response.success)
+
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_missing_content_type(self, mock_from_git):
+        """Test handle_provision with missing content_type falls back to git."""
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        
+        # Payload without content_type
+        no_content_type_manifest = {
+            "metadata": {
+                "name": "test-no-content-type-stack"
+            },
+            "launch": {
+                "data": "ZHVtbXk="
+            }
+        }
+        self.node.current_stack.stack = json.dumps(no_content_type_manifest)
+        self.node.current_stack.url = "http://example.com/repo.git"
+        self.node.current_stack.branch = "main"
+
+        self.node.handle_provision(request, response)
+
+        # Should call from_git since missing content_type doesn't trigger archive handling
+        mock_from_git.assert_called_once_with(
+            repo_url="http://example.com/repo.git",
+            branch="main"
+        )
+        self.assertTrue(response.success)
+
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_invalid_json_payload(self, mock_from_git):
+        """Test handle_provision with invalid JSON payload falls back to git."""
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        
+        # Invalid JSON in stack field - becomes empty dict
+        self.node.current_stack.stack = "invalid json {"
+        self.node.current_stack.url = "http://example.com/repo.git"
+        self.node.current_stack.branch = "main"
+
+        self.node.handle_provision(request, response)
+
+        # Should call from_git since parsed_payload will be None for empty dict
+        mock_from_git.assert_called_once_with(
+            repo_url="http://example.com/repo.git",
+            branch="main"
+        )
+        self.assertTrue(response.success)
+
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_missing_content_type(self, mock_from_git):
+        """Test handle_provision with missing content_type falls back to git."""
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        
+        # Payload without content_type - parser returns None
+        no_content_type_manifest = {
+            "metadata": {
+                "name": "test-no-content-type-stack"
+            },
+            "launch": {
+                "data": "ZHVtbXk="
+            }
+        }
+        self.node.current_stack.stack = json.dumps(no_content_type_manifest)
+        self.node.current_stack.url = "http://example.com/repo.git"
+        self.node.current_stack.branch = "main"
+
+        self.node.handle_provision(request, response)
+
+        # Should call from_git since parser returns None for unknown format
+        mock_from_git.assert_called_once_with(
+            repo_url="http://example.com/repo.git",
+            branch="main"
+        )
+        self.assertTrue(response.success)
+
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_no_metadata_falls_back_to_git(self, mock_from_git):
+        """Test handle_provision with payload missing metadata falls back to git."""
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        
+        # Payload without metadata - parser returns None
+        no_metadata_payload = {
+            "launch": {
+                "data": "ZHVtbXk="
+            }
+        }
+        self.node.current_stack.stack = json.dumps(no_metadata_payload)
+        self.node.current_stack.url = "http://example.com/repo.git"
+        self.node.current_stack.branch = "main"
+
+        self.node.handle_provision(request, response)
+
+        # Should call from_git since parser returns None for unknown format
+        mock_from_git.assert_called_once_with(
+            repo_url="http://example.com/repo.git",
+            branch="main"
+        )
+        self.assertTrue(response.success)
+
+    def test_handle_provision_stack_archive_no_url_fails(self):
+        """Test handle_provision fails when stack/archive has no data or URL."""
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        
+        # Archive payload with no data and no URL
+        archive_manifest = {
+            "metadata": {
+                "name": "test-archive-no-data-url",
+                "content_type": "stack/archive"
+            },
+            "launch": {
+                "properties": {
+                    "filename": "dummy.tar.gz"
+                }
+            }
+        }
+        self.node.current_stack.stack = json.dumps(archive_manifest)
+        self.node.current_stack.url = ""  # No URL
+
+        self.node.handle_provision(request, response)
+
+        # Should fail because archive specification must include data or url
+        self.assertFalse(response.success)
+        self.assertIn("must include either 'data' or 'url'", response.err_msg)
+
+    def test_handle_provision_stack_archive_no_url_fails(self):
+        """Test handle_provision fails when stack/archive has no data or URL."""
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        
+        # Archive payload with no data and no URL in launch
+        archive_manifest = {
+            "metadata": {
+                "name": "test-archive-no-data-url",
+                "content_type": "stack/archive"
+            },
+            "launch": {
+                "properties": {
+                    "filename": "dummy.tar.gz"
+                }
+            }
+        }
+        self.node.current_stack.stack = json.dumps(archive_manifest)
+        self.node.current_stack.url = ""  # No URL
+
+        self.node.handle_provision(request, response)
+
+        # Should fail because archive specification must include data or url
+        self.assertFalse(response.success)
+        self.assertIn("must include either 'data' or 'url'", response.err_msg)
+
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_no_metadata_falls_back_to_git(self, mock_from_git):
+        """Test handle_provision with payload missing metadata falls back to git."""
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        
+        # Payload without metadata
+        no_metadata_payload = {
+            "launch": {
+                "data": "ZHVtbXk="
+            }
+        }
+        self.node.current_stack.stack = json.dumps(no_metadata_payload)
+        self.node.current_stack.url = "http://example.com/repo.git"
+        self.node.current_stack.branch = "main"
+
+        self.node.handle_provision(request, response)
+
+        # Should call from_git since no metadata means no content_type check
+        mock_from_git.assert_called_once_with(
+            repo_url="http://example.com/repo.git",
+            branch="main"
+        )
+        self.assertTrue(response.success)
