@@ -527,11 +527,12 @@ class TestMutoComposer(unittest.TestCase):
         }
         result = self.node.stack_parser.parse_payload(payload)
         self.assertIsNotNone(result)
-        self.assertEqual(result["content_type"], "stack/archive")
-        self.assertEqual(result["stack"], "dGVzdCBkYXRh")
-        self.assertEqual(result["launch_file"], "launch/test.launch.py")
-        self.assertEqual(result["command"], "launch")
-        self.assertEqual(result["launch_args"], [{"name": "arg1", "default": "val1"}])
+        # The parser returns the original payload structure
+        self.assertEqual(result["metadata"]["content_type"], "stack/archive")
+        self.assertEqual(result["launch"]["data"], "dGVzdCBkYXRh")
+        self.assertEqual(result["launch"]["properties"]["launch_file"], "launch/test.launch.py")
+        self.assertEqual(result["launch"]["properties"]["command"], "launch")
+        self.assertEqual(result["launch"]["properties"]["launch_args"], [{"name": "arg1", "default": "val1"}])
 
     def test_parse_payload_unparseable(self):
         """Test that parse_payload returns None for unparseable payloads"""
