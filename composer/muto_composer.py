@@ -30,6 +30,7 @@ from rclpy.task import Future
 from composer.workflow.schemas.pipeline_schema import PIPELINE_SCHEMA
 from jsonschema import validate, ValidationError
 from composer.model.stack import Stack
+from composer.utils.stack_parser import create_stack_parser
 
 CORE_TWIN_NODE_NAME = "core_twin"
 
@@ -84,6 +85,9 @@ class MutoComposer(Node):
         pipeline_config = self.load_pipeline_config(pipeline_file_path)
         self.init_pipelines(pipeline_config["pipelines"])
         # self.router = Router(self.pipelines)
+
+        # Initialize stack parser utility
+        self.stack_parser = create_stack_parser(self.get_logger())
 
         # Bootstrap
         self.bootstrap()
@@ -168,14 +172,15 @@ class MutoComposer(Node):
             self.method = stack_msg.method  # start, kill, apply
             payload = json.loads(stack_msg.payload)
 
-            stack_override = self._extract_stack_from_solution(payload)
-            if stack_override:
-                payload = stack_override
-                self.get_logger().info("Extracted stack from solution manifest before execution.")
+            # Use the new stack parser utility to handle different payload formats
+            parsed_stack = self.stack_parser.parse_payload(payload)
+            if parsed_stack and parsed_stack != payload:
+                payload = parsed_stack
+                self.get_logger().info("Parsed stack from payload using stack parser utility.")
            
             # if the payload has a value key, extract stackId from it
             # otherwise, assume the payload is the stack itself do not get
-            # stack from core_twin, use the payload directlt
+            # stack from core_twin, use the payload directly
 
             if "value" in payload:
                 payload_value = payload["value"]
@@ -277,8 +282,9 @@ class MutoComposer(Node):
         has_on_start_and_on_kill = all(
             [next_stack.get("on_start"), next_stack.get("on_kill")]
         )
-        artifact_present = next_stack.get("artifact")
-        has_archive_artifact = bool(artifact_present)
+        
+        has_archive_artifact = next_stack.get("metadata", {}).get("content_type", "") == "stack/archive"
+        artifact_present = next_stack
         if has_archive_artifact:
             self.get_logger().info(f"Artifact details detected: {artifact_present.keys() if isinstance(artifact_present, dict) else artifact_present}")
 
@@ -320,45 +326,6 @@ class MutoComposer(Node):
             "should_run_launch": should_run_launch,
         }
         self.pipeline_execute(self.method, execution_context)
-
-    def _extract_stack_from_solution(self, payload: dict) -> Optional[dict]:
-        spec = payload.get("spec")
-        if not isinstance(spec, dict):
-            return None
-
-        components = spec.get("components", [])
-        if not isinstance(components, list):
-            return None
-
-        for component in components:
-            properties = component.get("properties", {})
-            if properties.get("type") != "stack":
-                continue
-            data_b64 = properties.get("data")
-            if not data_b64:
-                continue
-
-            try:
-                raw = base64.b64decode(data_b64)
-                import gzip
-                import io
-
-                while True:
-                    try:
-                        stack_json = raw.decode("utf-8")
-                        stack_dict = json.loads(stack_json)
-                        return stack_dict
-                    except (UnicodeDecodeError, json.JSONDecodeError):
-                        if len(raw) > 2 and raw[0] == 0x1F and raw[1] == 0x8B:  # gzip magic numbers
-                            with gzip.GzipFile(fileobj=io.BytesIO(raw)) as gz:
-                                raw = gz.read()
-                            continue
-                        raise
-            except (ValueError, json.JSONDecodeError, OSError) as exc:
-                self.get_logger().warning(
-                    f"Failed to decode stack component '{component.get('name', '')}' from solution: {exc}"
-                )
-        return None
 
     def merge(self, current_stack: dict, next_stack: dict) -> dict:
         """

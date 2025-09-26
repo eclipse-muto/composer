@@ -464,15 +464,118 @@ class TestMutoComposer(unittest.TestCase):
             }
         }
 
-        decoded = self.node._extract_stack_from_solution(solution_payload)
+        decoded = self.node.stack_parser.parse_payload(solution_payload)
         self.assertEqual(decoded, stack_payload)
+
+    def test_parse_payload_non_dict(self):
+        """Test that parse_payload returns None for non-dict payloads"""
+        result = self.node.stack_parser.parse_payload("not a dict")
+        self.assertIsNone(result)
+
+    def test_parse_payload_with_value_key(self):
+        """Test that parse_payload returns payload as-is when it has a 'value' key"""
+        payload = {"value": {"stackId": "test-stack"}}
+        result = self.node.stack_parser.parse_payload(payload)
+        self.assertEqual(result, payload)
+
+    def test_parse_payload_direct_stack_json(self):
+        """Test parsing direct stack JSON format"""
+        payload = {
+            "metadata": {
+                "name": "Test Stack",
+                "content_type": "stack/json"
+            },
+            "launch": {
+                "node": [
+                    {
+                        "name": "test_node",
+                        "pkg": "test_pkg",
+                        "exec": "test_exec"
+                    }
+                ]
+            }
+        }
+        result = self.node.stack_parser.parse_payload(payload)
+        expected = {
+            "node": [
+                {
+                    "name": "test_node",
+                    "pkg": "test_pkg",
+                    "exec": "test_exec"
+                }
+            ]
+        }
+        self.assertEqual(result, expected)
+
+    def test_parse_payload_archive_format(self):
+        """Test parsing archive format"""
+        payload = {
+            "metadata": {
+                "name": "Test Archive Stack",
+                "content_type": "stack/archive"
+            },
+            "launch": {
+                "data": "dGVzdCBkYXRh",  # base64 encoded "test data"
+                "properties": {
+                    "launch_file": "launch/test.launch.py",
+                    "command": "launch",
+                    "launch_args": [
+                        {"name": "arg1", "default": "val1"}
+                    ]
+                }
+            }
+        }
+        result = self.node.stack_parser.parse_payload(payload)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["content_type"], "stack/archive")
+        self.assertEqual(result["stack"], "dGVzdCBkYXRh")
+        self.assertEqual(result["launch_file"], "launch/test.launch.py")
+        self.assertEqual(result["command"], "launch")
+        self.assertEqual(result["launch_args"], [{"name": "arg1", "default": "val1"}])
+
+    def test_parse_payload_unparseable(self):
+        """Test that parse_payload returns None for unparseable payloads"""
+        payload = {
+            "unknown": "format",
+            "no": "matching keys"
+        }
+        result = self.node.stack_parser.parse_payload(payload)
+        self.assertIsNone(result)
+
+    def test_parse_payload_direct_stack_json_string_launch(self):
+        """Test parsing direct stack JSON format with string launch data"""
+        payload = {
+            "metadata": {
+                "content_type": "stack/json"
+            },
+            "launch": '{"node": [{"name": "string_node", "pkg": "string_pkg"}]}'
+        }
+        result = self.node.stack_parser.parse_payload(payload)
+        expected = {"node": [{"name": "string_node", "pkg": "string_pkg"}]}
+        self.assertEqual(result, expected)
+
+    def test_parse_payload_invalid_direct_stack_json(self):
+        """Test parsing invalid direct stack JSON format"""
+        payload = {
+            "metadata": {
+                "content_type": "stack/json"
+            },
+            "launch": "invalid json string {{{"
+        }
+        result = self.node.stack_parser.parse_payload(payload)
+        self.assertIsNone(result)
 
     def test_determine_execution_path_with_artifact(self):
         artifact_stack = {
-            "artifact": {
-                "type": "archive",
+            "metadata": {
+                "name": "test-artifact",
+                "content_type": "stack/archive"
+            },
+            "launch": {
                 "data": "ZHVtbXk=",
-                "filename": "dummy.tar.gz",
+                "properties": {
+                    "filename": "dummy.tar.gz"
+                }
             }
         }
         self.node.current_stack = {}

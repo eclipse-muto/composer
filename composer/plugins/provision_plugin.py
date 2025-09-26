@@ -32,6 +32,7 @@ from muto_msgs.srv import ProvisionPlugin
 
 WORKSPACES_PATH = os.path.join("/var", "tmp", "muto_workspaces")
 ARTIFACT_STATE_FILE = ".muto_artifact.json"
+from composer.utils.stack_parser import StackParser
 
 
 class MutoProvisionPlugin(Node):
@@ -42,6 +43,7 @@ class MutoProvisionPlugin(Node):
 
         self.current_stack: StackManifest | None = None
         self.is_up_to_date = False
+        self.stack_parser = StackParser(self.get_logger())
 
         self.declare_parameter("ignored_packages", [""])
         self.ignored_packages = [
@@ -112,8 +114,10 @@ class MutoProvisionPlugin(Node):
         os.makedirs(workspace_dir, exist_ok=True)
 
     def _prepare_archive(self, artifact: Dict[str, Any], temp_dir: str) -> tuple[str, Dict[str, Any]]:
-        data_b64 = artifact.get("data")
+        data_b64 = artifact.get("stack")
         url = artifact.get("url")
+        props = artifact.get("properties", {})
+        metadata = artifact.get("properties", {})
 
         if not data_b64 and not url:
             raise ValueError("Artifact specification must include either 'data' or 'url'.")
@@ -121,7 +125,7 @@ class MutoProvisionPlugin(Node):
         metadata: Dict[str, Any] = {}
 
         if data_b64:
-            filename = artifact.get("filename") or artifact.get("name") or "artifact.tar"
+            filename = props.get("filename") or metadata.get("name") or "artifact.tar"
             archive_path = os.path.join(temp_dir, filename)
             try:
                 decoded_bytes = base64.b64decode(data_b64, validate=True)
@@ -131,8 +135,8 @@ class MutoProvisionPlugin(Node):
             with open(archive_path, "wb") as file_handle:
                 file_handle.write(decoded_bytes)
 
-            checksum = artifact.get("checksum")
-            algorithm = artifact.get("algorithm", "sha256")
+            checksum = props.get("checksum")
+            algorithm = props.get("algorithm", "sha256")
             if checksum:
                 self._verify_checksum(archive_path, checksum, algorithm)
 
@@ -293,10 +297,11 @@ class MutoProvisionPlugin(Node):
         if not workspace_dir:
             return
 
+        props = artifact.get("properties", {})  
         base_state = {
             "type": "archive",
-            "subdir": artifact.get("subdir"),
-            "flatten": artifact.get("flatten", True),
+            "subdir": props.get("subdir"),
+            "flatten": props.get("flatten", True),
         }
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -316,7 +321,7 @@ class MutoProvisionPlugin(Node):
                 f"Workspace contents after extraction: {os.listdir(workspace_dir)}"
             )
 
-        subdir = artifact.get("subdir")
+        subdir = props.get("subdir")
         if subdir:
             resolved_subdir = os.path.join(workspace_dir, subdir)
             if os.path.isdir(resolved_subdir):
@@ -325,7 +330,7 @@ class MutoProvisionPlugin(Node):
                 self.get_logger().warning(
                     f"Artifact subdirectory '{subdir}' not found; continuing without flattening."
                 )
-        elif artifact.get("flatten", True):
+        elif props.get("flatten", True):
             self._flatten_single_directory(workspace_dir)
 
         self._write_artifact_state(workspace_dir, {**base_state, **state_info})
@@ -565,12 +570,33 @@ class MutoProvisionPlugin(Node):
         try:
             if request.start:
                 if self.current_stack:
-                    manifest = self._load_stack_manifest()
-                    artifact = manifest.get("artifact", {}) if isinstance(manifest, dict) else {}
-                    artifact_type = str(artifact.get("type", "")).lower()
-
-                    if artifact_type == "archive":
-                        self.from_archive(artifact)
+                    # Parse payload and determine type
+                    payload = {}
+                    if self.current_stack.stack:
+                        try:
+                            payload = json.loads(self.current_stack.stack)
+                        except (json.JSONDecodeError, TypeError):
+                            # If stack is not valid JSON, treat as empty payload
+                            payload = {}
+                    
+                    parsed_payload = self.stack_parser.parse_payload(payload)
+                    
+                    if parsed_payload and isinstance(parsed_payload, dict):
+                        content_type = parsed_payload.get("content_type")
+                        if content_type == "stack/archive":
+                            self.from_archive(parsed_payload)
+                        elif self.current_stack.url:
+                            self.from_git(
+                                repo_url=self.current_stack.url,
+                                branch=self.current_stack.branch,
+                            )
+                        else:
+                            response.err_msg = (
+                                "Stack does not define a repository or archive artifact."
+                            )
+                            response.success = False
+                            self.get_logger().error(response.err_msg)
+                            return response
                     elif self.current_stack.url:
                         self.from_git(
                             repo_url=self.current_stack.url,

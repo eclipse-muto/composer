@@ -228,7 +228,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertFalse(response.success)
         self.assertEqual(response.err_msg, "Start flag not set in request.")
 
-    @patch("subprocess.Popen")
+    @patch("composer.plugins.launch_plugin.subprocess.Popen")
     @patch.object(MutoDefaultLaunchPlugin, "find_file")
     @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
@@ -249,6 +249,8 @@ class TestLaunchPlugin(unittest.TestCase):
             "mock_launch_description_source"
         )
         self.node.launch_arguments = ["test:=test_args"]
+        self.node.current_stack.on_start = None
+        self.node.current_stack.on_kill = None
         mock_find_file.return_value = "/path/to/launch_file.py"
 
         self.node.handle_start(request, response)
@@ -279,10 +281,12 @@ class TestLaunchPlugin(unittest.TestCase):
             "mock_launch_description_source"
         )
         self.node.launch_arguments = ["test:=test_args"]
+        self.node.current_stack.on_start = None
+        self.node.current_stack.on_kill = None
 
         mock_find_file.return_value = None
         self.node.handle_start(request, response)
-        self.assertRaises(FileNotFoundError)
+        # self.assertRaises(FileNotFoundError)
         mock_source_workspace.assert_called_once_with()
         mock_find_file.assert_called()
         mock_patch_asyncio.assert_not_called()
@@ -338,7 +342,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertFalse(response.success)
         self.assertEqual(
             response.err_msg,
-            "the JSON object must be str, bytes or bytearray, not MagicMock",
+            "No valid launch method found for the stack payload.",
         )
 
     @patch("subprocess.run")
@@ -411,6 +415,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.node.current_stack.name = "test_stack"
         self.node.current_stack.launch_description_source = "test_launch_file.launch.py"
         self.node.current_stack.on_kill = ""
+        self.node.current_stack.stack = json.dumps({})  # Add empty payload
 
         request = mock_launch_plugin.request
         request.start = True
@@ -542,7 +547,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertFalse(response.success)
         self.assertEqual(
             response.err_msg,
-            "the JSON object must be str, bytes or bytearray, not MagicMock",
+            "No valid stack data found for apply operation.",
         )
         mock_stack.assert_not_called()
 

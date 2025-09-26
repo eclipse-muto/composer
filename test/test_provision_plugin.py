@@ -111,9 +111,15 @@ class TestMutoProvisionPlugin(unittest.TestCase):
         request.start = True
         response = MagicMock()
         artifact_manifest = {
-            "artifact": {
-                "type": "archive",
+            "metadata": {
+                "name": "test-artifact",
+                "content_type": "stack/archive"
+            },
+            "launch": {
                 "data": "ZHVtbXk=",
+                "properties": {
+                    "filename": "dummy.tar.gz"
+                }
             }
         }
         self.node.current_stack.stack = json.dumps(artifact_manifest)
@@ -141,9 +147,15 @@ class TestMutoProvisionPlugin(unittest.TestCase):
         request.start = True
         response = MagicMock()
         artifact_manifest = {
-            "artifact": {
-                "type": "archive",
+            "metadata": {
+                "name": "test-artifact",
+                "content_type": "stack/archive"
+            },
+            "launch": {
                 "data": "ZHVtbXk=",
+                "properties": {
+                    "filename": "dummy.tar.gz"
+                }
             }
         }
         self.node.current_stack.stack = json.dumps(artifact_manifest)
