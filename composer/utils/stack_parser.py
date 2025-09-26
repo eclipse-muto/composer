@@ -134,34 +134,7 @@ class StackParser:
         content_type = metadata.get("content_type")
         
         if content_type == "stack/archive":
-            launch_data = payload.get("launch", {})
-            data_b64 = launch_data.get("data")
-            if data_b64:
-                try:
-                    # For archive format, we don't decode the data as JSON stack
-                    # Instead, we create a stack definition that references the archive
-                    archive_properties = launch_data.get("properties", {})
-                    
-                    # Create a stack that uses the archive properties
-                    result_stack = {
-                        "content_type": "stack/archive",
-                        "stack": data_b64,  # Keep as base64 for later processing
-                        "properties": archive_properties,
-                        "metadata": metadata,
-                    }
-                    
-                    # If there are launch-related properties, add them to the stack
-                    if "launch_file" in archive_properties:
-                        result_stack["launch_file"] = archive_properties["launch_file"]
-                    if "command" in archive_properties:
-                        result_stack["command"] = archive_properties["command"]
-                    if "launch_args" in archive_properties:
-                        result_stack["launch_args"] = archive_properties["launch_args"]
-                    
-                    self.logger.debug("Parsed stack/archive format")
-                    return result_stack
-                except Exception as exc:
-                    self.logger.warning(f"Failed to process archive stack data: {exc}")
+            return payload
                     
         return None
     

@@ -108,10 +108,15 @@ class MutoDefaultLaunchPlugin(Node):
             return None, None, None, None
             
         # Determine type based on content_type or structure
-        content_type = parsed_payload.get("content_type")
+        metadata = parsed_payload.get("metadata")
+        content_type = None
+        if metadata is not None:
+            content_type = metadata.get("content_type")
         if content_type == "stack/archive":
-            launch_file = parsed_payload.get("launch_file")
-            command = parsed_payload.get("command", "launch")
+            launch = parsed_payload.get("launch", {})
+            props = launch.get("properties", {})
+            launch_file = props.get("launch_file")
+            command = props.get("command", "launch")
             return "stack/archive", parsed_payload, launch_file, command
         elif content_type == "stack/json":
             # For stack/json, the parsed_payload is the launch data
