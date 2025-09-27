@@ -127,7 +127,7 @@ class MutoComposer(Node):
                 )
                 self.publish_current_stack(resolved_stack)
                 self.publish_raw_stack(resolved_stack)
-                self.pipeline_execute("start")
+                self.pipeline_execute("start", json.loads(resolved_stack))
             else:
                 self.get_logger().error(
                     "No default stack received. Aborting bootstrap."
@@ -298,6 +298,8 @@ class MutoComposer(Node):
             self.get_logger().info(
                 "Archive manifest detected; running ProvisionPlugin and LaunchPlugin."
             )
+            self.current_stack = next_stack
+
         elif has_json_artifact:
             should_run_provision = False
             should_run_launch = True
@@ -350,7 +352,7 @@ class MutoComposer(Node):
             "should_run_provision": should_run_provision,
             "should_run_launch": should_run_launch,
         }
-        self.pipeline_execute(self.method, execution_context)
+        self.pipeline_execute(self.method, execution_context, self.current_stack)
 
     def merge(self, current_stack: dict, next_stack: dict) -> dict:
         """
@@ -372,7 +374,7 @@ class MutoComposer(Node):
         merged = stack_1.merge(stack_2)
         return merged.manifest
 
-    def pipeline_execute(self, pipeline_name: str, additional_context: dict = None):
+    def pipeline_execute(self, pipeline_name: str, additional_context: dict = None, stack_manifest=None):
         """
         Execute a specific pipeline by name with additional context.
 
@@ -385,7 +387,7 @@ class MutoComposer(Node):
             self.get_logger().info(
                 f"Executing pipeline: {pipeline_name} with context: {additional_context}"
             )
-            pipeline.execute_pipeline(additional_context=additional_context)
+            pipeline.execute_pipeline(additional_context=additional_context, next_manifest=stack_manifest)
         else:
             self.get_logger().warn(f"No pipeline found with name: {pipeline_name}")
 

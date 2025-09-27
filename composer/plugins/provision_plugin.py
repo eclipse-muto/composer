@@ -54,7 +54,7 @@ class MutoProvisionPlugin(Node):
             if pkg
         ]
 
-        self.create_subscription(StackManifest, "composed_stack", self.get_stack, 10)
+        # self.create_subscription(StackManifest, "composed_stack", self.get_stack, 10)
         self.provision_srv = self.create_service(
             ProvisionPlugin, "muto_provision", self.handle_provision
         )
@@ -270,12 +270,13 @@ class MutoProvisionPlugin(Node):
             repo_url (str): The URL of the git repository.
             branch (str): The branch to check out.
         """
-        if not self.current_stack:
-            self.get_logger().error("No current stack available.")
+        if not self.current_stack or not isinstance(self.current_stack, dict):
+            self.get_logger().error("No valid current stack available.")
             return
 
+        stack_name = self.current_stack.get("name", "default")
         target_dir = os.path.join(
-            WORKSPACES_PATH, self.current_stack.name.replace(" ", "_")
+            WORKSPACES_PATH, stack_name.replace(" ", "_")
         )
 
         if os.path.exists(os.path.join(target_dir, ".git")):
@@ -566,32 +567,25 @@ class MutoProvisionPlugin(Node):
         self, request: ProvisionPlugin.Request, response: ProvisionPlugin.Response
     ):
         """Service handler to prepare the workspace."""
+        self.current_stack = self._safely_parse_stack(request.input.current.stack)
         try:
             if request.start:
                 if self.current_stack:
                     # Parse payload and determine type
-                    payload = {}
-                    if self.current_stack.stack:
-                        try:
-                            payload = json.loads(self.current_stack.stack)
-                        except (json.JSONDecodeError, TypeError):
-                            # If stack is not valid JSON, treat as empty payload
-                            payload = {}
                     
-                    parsed_payload = self.stack_parser.parse_payload(payload)
                     
-                    if parsed_payload and isinstance(parsed_payload, dict):
-                        metadata = parsed_payload.get("metadata", {})
+                    if self.current_stack :
+                        metadata = self.current_stack.get("metadata", {})
                         content_type = None
                         if metadata is not None:
                             content_type = metadata.get("content_type")
-                        
+                        self.get_logger().info(f"provisioning stack with content_type: {content_type}")
                         if content_type == "stack/archive":
-                            self.from_archive(parsed_payload)
-                        elif self.current_stack.url:
+                            self.from_archive(self.current_stack)
+                        elif request.input.current.url:
                             self.from_git(
-                                repo_url=self.current_stack.url,
-                                branch=self.current_stack.branch,
+                                repo_url=request.input.current.url,
+                                branch=request.input.current.branch,
                             )
                         else:
                             response.err_msg = (
@@ -600,10 +594,10 @@ class MutoProvisionPlugin(Node):
                             response.success = False
                             self.get_logger().error(response.err_msg)
                             return response
-                    elif self.current_stack.url:
+                    elif request.input.current.url:
                         self.from_git(
-                            repo_url=self.current_stack.url,
-                            branch=self.current_stack.branch,
+                            repo_url=request.input.current.url,
+                            branch=request.input.current.branch,
                         )
                     else:
                         response.err_msg = (
@@ -639,14 +633,43 @@ class MutoProvisionPlugin(Node):
             self.get_logger().error(f"Exception: {e}")
             response.err_msg = f"Error: {e}"
             response.success = False
+            
+        response.output.current = request.input.current
         return response
 
     def get_workspace_dir(self) -> str:
         """Get the workspace directory for the current stack."""
-        if not self.current_stack:
-            self.get_logger().error("No current stack available.")
+        if not self.current_stack or not isinstance(self.current_stack, dict):
+            self.get_logger().error("No valid current stack available.")
             return ""
-        return os.path.join(WORKSPACES_PATH, self.current_stack.name.replace(" ", "_"))
+        
+        metadata = self.current_stack.get("metadata", {})
+        name = metadata.get("name", self.current_stack.get("name", "default"))
+        return os.path.join(WORKSPACES_PATH, name.replace(" ", "_"))
+
+    def _safely_parse_stack(self, stack_string):
+        """
+        Safely parse a stack string to JSON. Returns dictionary if valid JSON, None otherwise.
+        
+        Args:
+            stack_string (str): The stack string to parse
+            
+        Returns:
+            dict or None: Parsed JSON dictionary or None if parsing fails
+        """
+        if not stack_string:
+            return None
+            
+        try:
+            parsed = json.loads(stack_string)
+            if isinstance(parsed, dict):
+                return parsed
+            else:
+                self.get_logger().warning(f"Stack string parsed to non-dict type: {type(parsed)}")
+                return None
+        except (json.JSONDecodeError, TypeError) as e:
+            self.get_logger().warning(f"Failed to parse stack string as JSON: {e}")
+            return None
 
 
 def main():
