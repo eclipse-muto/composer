@@ -30,6 +30,7 @@ from rclpy.task import Future
 from composer.workflow.schemas.pipeline_schema import PIPELINE_SCHEMA
 from jsonschema import validate, ValidationError
 from composer.model.stack import Stack
+from composer.utils.stack_parser import create_stack_parser
 
 CORE_TWIN_NODE_NAME = "core_twin"
 
@@ -85,8 +86,14 @@ class MutoComposer(Node):
         self.init_pipelines(pipeline_config["pipelines"])
         # self.router = Router(self.pipelines)
 
+        # Initialize stack parser utility
+        self.stack_parser = create_stack_parser(self.get_logger())
+
         # Bootstrap
-        self.bootstrap()
+        # DO NOT GET THE CURRENT STACK FROM
+        # TWIN, IT MAY NOT BE THE DEFAULT STACK
+        # SYMPHONY STATES WILL HANDLE THAT
+        #self.bootstrap()
 
     def bootstrap(self):
         """
@@ -120,7 +127,7 @@ class MutoComposer(Node):
                 )
                 self.publish_current_stack(resolved_stack)
                 self.publish_raw_stack(resolved_stack)
-                self.pipeline_execute("start")
+                self.pipeline_execute("start", None, json.loads(resolved_stack))
             else:
                 self.get_logger().error(
                     "No default stack received. Aborting bootstrap."
@@ -168,14 +175,15 @@ class MutoComposer(Node):
             self.method = stack_msg.method  # start, kill, apply
             payload = json.loads(stack_msg.payload)
 
-            stack_override = self._extract_stack_from_solution(payload)
-            if stack_override:
-                payload = stack_override
-                self.get_logger().info("Extracted stack from solution manifest before execution.")
+            # Use the new stack parser utility to handle different payload formats
+            parsed_stack = self.stack_parser.parse_payload(payload)
+            if parsed_stack and parsed_stack != payload:
+                payload = parsed_stack
+                self.get_logger().info("Parsed stack from payload using stack parser utility.")
            
             # if the payload has a value key, extract stackId from it
             # otherwise, assume the payload is the stack itself do not get
-            # stack from core_twin, use the payload directlt
+            # stack from core_twin, use the payload directly
 
             if "value" in payload:
                 payload_value = payload["value"]
@@ -190,9 +198,9 @@ class MutoComposer(Node):
                 # Use payload directly as the stack
                 resolved_stack = self.resolve_expression(json.dumps(payload))
                 self.next_stack = resolved_stack
+                self.determine_execution_path()
                 self.publish_next_stack(self.next_stack)
                 self.publish_raw_stack(resolved_stack)
-                self.determine_execution_path()
         except json.JSONDecodeError as e:
             self.get_logger().error(f"Invalid JSON in payload: {e}")
         except KeyError as k:
@@ -229,9 +237,9 @@ class MutoComposer(Node):
                 )
 
                 self.next_stack = resolved_stack
+                self.determine_execution_path()
                 self.publish_next_stack(self.next_stack)
                 self.publish_raw_stack(resolved_stack)
-                self.determine_execution_path()
             else:
                 self.get_logger().warn("Received empty result from service call.")
         except Exception as e:
@@ -277,8 +285,10 @@ class MutoComposer(Node):
         has_on_start_and_on_kill = all(
             [next_stack.get("on_start"), next_stack.get("on_kill")]
         )
-        artifact_present = next_stack.get("artifact")
-        has_archive_artifact = bool(artifact_present)
+        
+        has_archive_artifact = next_stack.get("metadata", {}).get("content_type", "") == "stack/archive"
+        has_json_artifact = next_stack.get("metadata", {}).get("content_type", "") == "stack/json"
+        artifact_present = next_stack
         if has_archive_artifact:
             self.get_logger().info(f"Artifact details detected: {artifact_present.keys() if isinstance(artifact_present, dict) else artifact_present}")
 
@@ -286,14 +296,37 @@ class MutoComposer(Node):
             should_run_provision = True
             should_run_launch = True
             self.get_logger().info(
-                "Archive artifact detected; running ProvisionPlugin and LaunchPlugin."
+                "Archive manifest detected; running ProvisionPlugin and LaunchPlugin."
+            )
+            self.current_stack = next_stack
+
+        elif has_json_artifact:
+            should_run_provision = False
+            should_run_launch = True
+            ns = next_stack.get("launch", {})
+            csmeta = None 
+            if self.current_stack is not None:
+                csmeta = self.current_stack.get("metadata", None)
+            if csmeta is not None and isinstance(csmeta, dict):
+                merged_stack = self.merge(self.current_stack.get("launch", {}), ns)
+                next_stack["launch"] = merged_stack
+                self.current_stack = next_stack
+            else:
+                merged_stack = self.merge(self.current_stack, ns)
+                next_stack["launch"] = merged_stack
+                self.current_stack = next_stack
+               
+            self.publish_raw_stack(json.dumps(next_stack))  # Publish the merged stack
+
+            self.get_logger().info(
+                "JSON manifest detected; running LaunchPlugin."
             )
         elif is_next_stack_empty and (has_launch_description or has_on_start_and_on_kill):
             # Condition to run ProvisionPlugin
-            should_run_provision = True
+            should_run_provision = False
             should_run_launch = True
             self.get_logger().info(
-                "Conditions met to run ProvisionPlugin and LaunchPlugin."
+                "Legacy stack conditions met to run LaunchPlugin."
             )
         elif not is_next_stack_empty:
             # Condition to merge stacks and bypass ProvisionPlugin
@@ -319,46 +352,7 @@ class MutoComposer(Node):
             "should_run_provision": should_run_provision,
             "should_run_launch": should_run_launch,
         }
-        self.pipeline_execute(self.method, execution_context)
-
-    def _extract_stack_from_solution(self, payload: dict) -> Optional[dict]:
-        spec = payload.get("spec")
-        if not isinstance(spec, dict):
-            return None
-
-        components = spec.get("components", [])
-        if not isinstance(components, list):
-            return None
-
-        for component in components:
-            properties = component.get("properties", {})
-            if properties.get("type") != "stack":
-                continue
-            data_b64 = properties.get("data")
-            if not data_b64:
-                continue
-
-            try:
-                raw = base64.b64decode(data_b64)
-                import gzip
-                import io
-
-                while True:
-                    try:
-                        stack_json = raw.decode("utf-8")
-                        stack_dict = json.loads(stack_json)
-                        return stack_dict
-                    except (UnicodeDecodeError, json.JSONDecodeError):
-                        if len(raw) > 2 and raw[0] == 0x1F and raw[1] == 0x8B:  # gzip magic numbers
-                            with gzip.GzipFile(fileobj=io.BytesIO(raw)) as gz:
-                                raw = gz.read()
-                            continue
-                        raise
-            except (ValueError, json.JSONDecodeError, OSError) as exc:
-                self.get_logger().warning(
-                    f"Failed to decode stack component '{component.get('name', '')}' from solution: {exc}"
-                )
-        return None
+        self.pipeline_execute(self.method, execution_context, self.current_stack)
 
     def merge(self, current_stack: dict, next_stack: dict) -> dict:
         """
@@ -371,15 +365,16 @@ class MutoComposer(Node):
         Returns:
             dict: The merged stack data.
         """
+        cs = current_stack
         if current_stack is None:
-            return next_stack
+            cs = {}
 
-        stack_1 = Stack(manifest=current_stack)
+        stack_1 = Stack(manifest=cs)
         stack_2 = Stack(manifest=next_stack)
         merged = stack_1.merge(stack_2)
         return merged.manifest
 
-    def pipeline_execute(self, pipeline_name: str, additional_context: dict = None):
+    def pipeline_execute(self, pipeline_name: str, additional_context: dict = None, stack_manifest=None):
         """
         Execute a specific pipeline by name with additional context.
 
@@ -392,7 +387,7 @@ class MutoComposer(Node):
             self.get_logger().info(
                 f"Executing pipeline: {pipeline_name} with context: {additional_context}"
             )
-            pipeline.execute_pipeline(additional_context=additional_context)
+            pipeline.execute_pipeline(additional_context=additional_context, next_manifest=stack_manifest)
         else:
             self.get_logger().warn(f"No pipeline found with name: {pipeline_name}")
 

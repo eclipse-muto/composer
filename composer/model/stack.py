@@ -404,7 +404,7 @@ class Stack():
         """
         return [(rmp['from'], rmp['to']) for rmp in remaps_config] if remaps_config else []
 
-    def should_node_run(self, node):
+    def should_node_run(self, node, launcher):
         """Check if a node should run. 
         This method clears the situation where a 
         node has NOACTION but it isn't running
@@ -412,12 +412,13 @@ class Stack():
 
         Args:
             node (object): The node object.
+            launcher (object): The launcher object.
 
         Returns:
             bool: True if the node should run, False otherwise.
         """
         active_nodes = [(active[1] if active[1] != '/' else '') +
-                        '/' + active[0] for active in self.get_active_nodes()]
+                        '/' + active[0] for active in launcher._active_nodes]
         
         should_node_run = f'{node.namespace}/{node.name}' not in active_nodes 
         return should_node_run
@@ -454,7 +455,7 @@ class Stack():
         """
         for c in composable_containers:
             node_desc = [ComposableNode(package=cn.pkg, plugin=cn.plugin, name=cn.name, namespace=cn.namespace, parameters=cn.ros_params, remappings=self.process_remaps(cn.remap))
-                         for cn in c.nodes if cn.action == STARTACTION or (cn.action == NOACTION and self.should_node_run(cn))]
+                         for cn in c.nodes if cn.action == STARTACTION or (cn.action == NOACTION and self.should_node_run(cn, launcher))]
 
             if node_desc:  # If node_desc is not empty
                 container = ComposableNodeContainer(
@@ -477,7 +478,7 @@ class Stack():
             launch_description (object): The launch description object.
         """
         for n in nodes:
-            if n.action == STARTACTION or (n.action == NOACTION and self.should_node_run(n)):
+            if n.action == STARTACTION or (n.action == NOACTION and self.should_node_run(n, launcher)):
                 launch_description.add_action(Node(
                     package=n.pkg,
                     executable=n.exec,

@@ -71,6 +71,12 @@ class MutoDefaultComposePlugin(Node):
             response.success = False
             response.err_msg = str(e)
             self.get_logger().error(f"Exception during compose: {e}")
+        
+        ## Simply chain the input to putput for now..
+        ## This plugin should be able to determine how 
+        ## the pipeline will continue to work i.e. apply policies
+        ## and transformations to the stack.
+        response.output.current = request.input.current
         return response
 
     def publish_composed_stack(self):

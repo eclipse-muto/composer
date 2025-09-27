@@ -27,6 +27,7 @@ from muto_msgs.srv import LaunchPlugin, CoreTwin
 from composer.workflow.launcher import Ros2LaunchParent
 from composer.plugins.provision_plugin import WORKSPACES_PATH
 from composer.model.stack import Stack
+from composer.utils.stack_parser import StackParser
 
 class MutoDefaultLaunchPlugin(Node):
     def __init__(self):
@@ -42,13 +43,14 @@ class MutoDefaultLaunchPlugin(Node):
             LaunchPlugin, "muto_apply_stack", self.handle_apply
         )
 
-        self.create_subscription(StackManifest, "composed_stack", self.get_stack, 10)
+        # self.create_subscription(StackManifest, "composed_stack", self.get_stack, 10)
 
         self.set_stack_cli = self.create_client(CoreTwin, "core_twin/set_current_stack")
 
         self.current_stack: Optional[StackManifest] = None
         self.launch_arguments = []
         self.launcher = Ros2LaunchParent(self.launch_arguments)
+        self.stack_parser = StackParser(self.get_logger())
         self.launch_process: Optional[subprocess.Popen] = None
         self._managed_processes: Set[subprocess.Popen] = set()
 
@@ -75,6 +77,46 @@ class MutoDefaultLaunchPlugin(Node):
         self.async_loop.stop()
         self.async_loop.run_forever()
 
+    def _safely_parse_stack(self, stack_string):
+        """
+        Safely parse a stack string to JSON. Returns dictionary if valid JSON, None otherwise.
+        
+        Args:
+            stack_string (str): The stack string to parse
+            
+        Returns:
+            dict or None: Parsed JSON dictionary or None if parsing fails
+        """
+        if not stack_string:
+            return None
+            
+        try:
+            parsed = json.loads(stack_string)
+            if isinstance(parsed, dict):
+                return parsed
+            else:
+                self.get_logger().warning(f"Stack string parsed to non-dict type: {type(parsed)}")
+                return None
+        except (json.JSONDecodeError, TypeError) as e:
+            self.get_logger().warning(f"Failed to parse stack string as JSON: {e}")
+            return None
+
+    def _get_stack_name(self, stack_dict):
+        """
+        Get the stack name from a stack dictionary, checking metadata.name first, then name, then defaulting to 'default'.
+        
+        Args:
+            stack_dict (dict): The stack dictionary
+            
+        Returns:
+            str: The stack name
+        """
+        if not stack_dict or not isinstance(stack_dict, dict):
+            return "default"
+            
+        metadata = stack_dict.get("metadata", {})
+        return metadata.get("name", stack_dict.get("name", "default"))
+
     def get_stack(self, stack_msg: StackManifest):
         """Callback to receive the composed stack and parse launch arguments."""
         try:
@@ -88,6 +130,103 @@ class MutoDefaultLaunchPlugin(Node):
             self.get_logger().error(f"Error parsing launch arguments: {e}")
         except Exception as e:
             self.get_logger().error(f"Unexpected error: {e}")
+
+    def _get_payload_type_and_data(self, payload):
+        """
+        Determine the payload type and extract relevant data using the stack parser.
+        
+        Returns:
+            tuple: (payload_type, stack_data, launch_file, command)
+            payload_type: 'stack/json', 'stack/archive', or 'raw'
+        """
+        if not isinstance(payload, dict):
+            return None, None, None, None
+            
+        # Use the stack parser to determine payload type and extract data
+        parsed_payload = self.stack_parser.parse_payload(payload)
+        if not parsed_payload:
+            return None, None, None, None
+            
+        # Determine type based on content_type or structure
+        metadata = parsed_payload.get("metadata")
+        content_type = None
+        if metadata is not None:
+            content_type = metadata.get("content_type")
+        if content_type == "stack/archive":
+            launch = parsed_payload.get("launch", {})
+            props = launch.get("properties", {})
+            launch_file = props.get("launch_file")
+            command = props.get("command", "launch")
+            return "stack/archive", parsed_payload, launch_file, command
+        elif content_type == "stack/json":
+            # For stack/json, the parsed_payload is the launch data
+            return "stack/json", parsed_payload, None, None
+        elif parsed_payload.get("node") or parsed_payload.get("composable"):
+            # Raw stack with node/composable
+            return "raw", parsed_payload, None, None
+        else:
+            return None, None, None, None
+
+    def _handle_stack_json_start(self, manifest):
+        """Handle start for stack/json payload type."""
+        if manifest:
+            stack_data = manifest.get("launch")
+            stack = Stack(manifest=stack_data)
+            stack.launch(self.launcher)
+            return True
+        return False
+
+    def _handle_raw_stack_start(self, stack_data):
+        """Handle start for raw stack payload type."""
+        if stack_data:
+            stack = Stack(manifest=stack_data)
+            stack.launch(self.launcher)
+            return True
+        return False
+
+    def _handle_archive_start(self, launch_file):
+        """Handle start for stack/archive payload type."""
+        if launch_file:
+            self._terminate_launch_process()
+            
+            # Get stack name safely - check metadata.name first, then name, then default
+            stack_name = self._get_stack_name(self.current_stack)
+                
+            workspace_path = os.path.join(
+                WORKSPACES_PATH,
+                stack_name.replace(" ", "_"),
+            )
+            full_launch_file = self.find_file(workspace_path, launch_file)
+            if not full_launch_file:
+                raise FileNotFoundError(f"Launch file not found: {launch_file}")
+            self._launch_via_ros2(full_launch_file)
+            return True
+        return False
+
+    def _handle_archive_kill(self, launch_file):
+        """Handle kill for stack/archive payload type."""
+        if launch_file:
+            self._terminate_launch_process()
+            self.get_logger().info("Launch process killed successfully.")
+            return True
+        return False
+
+    def _handle_raw_stack_kill(self, stack_data):
+        """Handle kill for raw stack payload type."""
+        # For raw stacks, just terminate any running launch processes
+        # self._terminate_launch_process()
+        self.launcher.kill()
+
+        self.get_logger().info("Launch process killed successfully.")
+        return True
+
+    def _handle_raw_stack_apply(self, stack_data):
+        """Handle apply for raw stack payload type."""
+        if stack_data:
+            stack = Stack(manifest=stack_data)
+            stack.apply(self.launcher)
+            return True
+        return False
 
     def find_file(self, ws_path: str, file_name: str) -> Optional[str]:
         """
@@ -116,17 +255,29 @@ class MutoDefaultLaunchPlugin(Node):
         self.get_logger().warning(f"File '{file_name}' not found under '{ws_path}'.")
         return None
 
-    def source_workspaces(self):
+    def source_workspaces(self, current: StackManifest):
         """
         Source the specified workspaces and update the environment variables.
         """
-        if not self.current_stack:
-            self.get_logger().error("No current stack available to source workspaces.")
+        if not current:
+            self.get_logger().error("No valid current stack available to source workspaces.")
             return
 
-        sources = json.loads(self.current_stack.source)
+        source_data = current.source
+        if not source_data:
+            self.get_logger().debug("No source data in current stack.")
+            return
+
+        try:
+            sources = json.loads(source_data) if isinstance(source_data, str) else source_data
+        except json.JSONDecodeError:
+            self.get_logger().error("Failed to parse source data as JSON.")
+            return
+
+        # Get stack name - check metadata.name first, then name, then default
+        stack_name = self._get_stack_name(current)
         workspace_dir = os.path.join(
-            WORKSPACES_PATH, self.current_stack.name.replace(" ", "_")
+            WORKSPACES_PATH, stack_name.replace(" ", "_")
         )
 
         def source_script(name: str, script_path: str) -> None:
@@ -185,63 +336,35 @@ class MutoDefaultLaunchPlugin(Node):
         Returns:
             LaunchPlugin.Response: The response indicating success or failure.
         """
+        self.current_stack = self._safely_parse_stack(request.input.current.stack)
         try:
-            # launch logic changes depending on the contents of the stack
             if request.start:
                 if self.current_stack:
                     self.get_logger().info(
                         f"Start requested; current launch PID={getattr(self.launch_process, 'pid', None)}"
                     )
-                    self.source_workspaces()
-
-                    if self.current_stack.launch_description_source:
-                        self._terminate_launch_process()
-                        launch_file = self.find_file(
-                            os.path.join(
-                                WORKSPACES_PATH,
-                                self.current_stack.name.replace(" ", "_"),
-                            ),
-                            self.current_stack.launch_description_source,
-                        )
-                        if not launch_file:
-                            raise FileNotFoundError(
-                                f"Launch file not found: {self.current_stack.launch_description_source}"
-                            )
-                        self._launch_via_ros2(launch_file)
-                    elif self.current_stack.on_start and self.current_stack.on_kill:
-                        script = self.find_file(
-                            os.path.join(
-                                WORKSPACES_PATH,
-                                self.current_stack.name.replace(" ", "_"),
-                            ),
-                            self.current_stack.on_start,
-                        )
-                        if not script:
-                            raise FileNotFoundError(
-                                f"Script not found: {self.current_stack.on_start}"
-                            )
-
-                        self.run_script(script)
-                        self.get_logger().info("Start script executed successfully.")
-                    elif self.current_stack and (
-                        json.loads(self.current_stack.stack).get("node", "")
-                        or json.loads(self.current_stack.stack).get("composable", "")
-                    ):
-                        stack = Stack(manifest=json.loads(self.current_stack.stack))
-                        stack.launch(self.launcher)
-
+                    self.source_workspaces(request.input.current)
+                    
+                    # Parse payload and determine type
+                    payload_type, stack_data, launch_file, command = self._get_payload_type_and_data( self.current_stack)
+                    
+                    if payload_type == "stack/json":
+                        success = self._handle_stack_json_start(stack_data)
+                    elif payload_type == "stack/archive":
+                        success = self._handle_archive_start(launch_file)
+                    elif payload_type == "raw":
+                        success = self._handle_raw_stack_start(stack_data)
                     else:
-                        self.get_logger().warning(
-                            "No launch description or start script provided."
-                        )
+                        # Fallback to legacy script-based launch
+                        success = self._handle_legacy_script_start()
+                    
+                    if success:
+                        response.success = True
+                        response.err_msg = ""
+                    else:
                         response.success = False
-                        response.err_msg = (
-                            "No launch description or start script provided."
-                        )
-                        return response
-
-                    response.success = True
-                    response.err_msg = ""
+                        response.err_msg = "No valid launch method found for the stack payload."
+                        self.get_logger().warning("No valid launch method found for the stack payload.")
                 else:
                     response.success = False
                     response.err_msg = "No default stack on device."
@@ -254,7 +377,49 @@ class MutoDefaultLaunchPlugin(Node):
             self.get_logger().error(f"Exception occurred during start: {e}")
             response.err_msg = str(e)
             response.success = False
+
+        response.output.current = request.input.current
         return response
+
+    def _handle_legacy_script_start(self):
+        """Handle legacy script-based start for backward compatibility."""
+        if not self.current_stack or not isinstance(self.current_stack, dict):
+            return False
+            
+        on_start = self.current_stack.get("on_start")
+        on_kill = self.current_stack.get("on_kill")
+        
+        # Get stack name - check metadata.name first, then name, then default
+        stack_name = self._get_stack_name(self.current_stack)
+        
+        if on_start and on_kill:
+            script = self.find_file(
+                os.path.join(
+                    WORKSPACES_PATH,
+                    stack_name.replace(" ", "_"),
+                ),
+                on_start,
+            )
+            if not script:
+                raise FileNotFoundError(f"Script not found: {on_start}")
+            self.run_script(script)
+            self.get_logger().info("Start script executed successfully.")
+            return True
+        elif self.current_stack.get("launch_description_source"):
+            launch_description_source = self.current_stack["launch_description_source"]
+            # Legacy behavior: launch the description source directly
+            launch_file = self.find_file(
+                os.path.join(
+                    WORKSPACES_PATH,
+                    stack_name.replace(" ", "_"),
+                ),
+                launch_description_source,
+            )
+            if not launch_file:
+                raise FileNotFoundError(f"Launch file not found: {launch_description_source}")
+            self._launch_via_ros2(launch_file)
+            return True
+        return False
 
     def run_script(self, script_path: str):
         """Run a script with proper error handling."""
@@ -286,47 +451,37 @@ class MutoDefaultLaunchPlugin(Node):
         Returns:
             LaunchPlugin.Response: The response indicating success or failure.
         """
+        self.current_stack = self._safely_parse_stack(request.input.current.stack)
         try:
             if request.start:
                 if self.current_stack:
                     self.get_logger().info(
                         f"Kill requested; current launch PID={getattr(self.launch_process, 'pid', None)}"
                     )
-                    if self.current_stack.launch_description_source:
-                        self._terminate_launch_process()
-                        self.get_logger().info("Launch process killed successfully.")
-                    elif self.current_stack.on_kill:
-                        script = self.find_file(
-                            os.path.join(
-                                WORKSPACES_PATH,
-                                self.current_stack.name.replace(" ", "_"),
-                            ),
-                            self.current_stack.on_kill,
-                        )
-                        if not script:
-                            raise FileNotFoundError(
-                                f"Script not found: {self.current_stack.on_kill}"
-                            )
+                    
+                    # Parse payload and determine type
+                    payload_type, stack_data, launch_file, command = self._get_payload_type_and_data(self.current_stack)
 
-                        self.run_script(script)
-                        self.get_logger().info("Kill script executed successfully.")
-                    elif self.current_stack and (
-                        json.loads(self.current_stack.stack).get("node", "")
-                        or json.loads(self.current_stack.stack).get("composable", "")
-                    ):  # assuming old style stack
-                        self.launcher.kill()
+                    if payload_type == "stack/archive":
+                        success = self._handle_archive_kill(launch_file)
+                    elif payload_type in ["stack/json", "raw"]:
+                        success = self._handle_raw_stack_kill(stack_data)
                     else:
-                        self.get_logger().warning(
-                            "No launch description or kill script provided."
-                        )
+                        # Fallback: check for legacy on_kill script, otherwise terminate process
+                        if self.current_stack and isinstance(self.current_stack, dict) and self.current_stack.get("on_kill"):
+                            success = self._handle_legacy_script_kill()
+                        else:
+                            self._terminate_launch_process()
+                            self.get_logger().info("Launch process killed successfully.")
+                            success = True
+                    
+                    if success:
+                        response.success = True
+                        response.err_msg = "Handle kill success"
+                    else:
                         response.success = False
-                        response.err_msg = (
-                            "No launch description or kill script provided."
-                        )
-                        return response
-
-                    response.success = True
-                    response.err_msg = "Handle kill success"
+                        response.err_msg = "No valid kill method found for the stack payload."
+                        self.get_logger().warning("No valid kill method found for the stack payload.")
                 else:
                     self.get_logger().error(
                         "No composed stack available. Aborting kill operation."
@@ -341,7 +496,32 @@ class MutoDefaultLaunchPlugin(Node):
             self.get_logger().error(f"Exception occurred during kill: {e}")
             response.err_msg = str(e)
             response.success = False
+            
+        response.output.current = request.input.current
         return response
+
+    def _handle_legacy_script_kill(self):
+        """Handle legacy script-based kill for backward compatibility."""
+        if not self.current_stack or not isinstance(self.current_stack, dict):
+            return False
+            
+        on_kill = self.current_stack.get("on_kill")
+        if on_kill:
+            # Get stack name - check metadata.name first, then name, then default
+            stack_name = self._get_stack_name(self.current_stack)
+            script = self.find_file(
+                os.path.join(
+                    WORKSPACES_PATH,
+                    stack_name.replace(" ", "_"),
+                ),
+                on_kill,
+            )
+            if not script:
+                raise FileNotFoundError(f"Script not found: {on_kill}")
+            self.run_script(script)
+            self.get_logger().info("Kill script executed successfully.")
+            return True
+        return False
 
     def handle_apply(
         self, request: LaunchPlugin.Request, response: LaunchPlugin.Response
@@ -356,21 +536,42 @@ class MutoDefaultLaunchPlugin(Node):
         Returns:
             LaunchPlugin.Response: The response indicating success or failure.
         """
+        self.current_stack = self._safely_parse_stack(request.input.current.stack)
         try:
             if self.current_stack:
-                stack_dict = json.loads(self.current_stack.stack)
-                self.get_logger().info(
-                    f"Apply requested with stack manifest keys: {list(stack_dict.keys())}"
-                )
-                stack = Stack(manifest=stack_dict)
-                stack.apply(self.launcher)
-
-            response.success = True
-            response.err_msg = ""
+                # Parse payload and determine type
+                payload_type, stack_data, launch_file, command = self._get_payload_type_and_data(self.current_stack)
+                
+                stack_dict = None
+                if payload_type == "stack/json":
+                    stack_dict = stack_data
+                elif payload_type == "raw":
+                    stack_dict = stack_data
+                elif payload_type == "stack/archive":
+                    # For archive, we might need to apply the full payload or just the properties
+                    stack_dict = self.current_stack
+                else:
+                    stack_dict = self.current_stack  # fallback
+                
+                if stack_dict:
+                    self.get_logger().info(
+                        f"Apply requested with stack manifest keys: {list(stack_dict.keys())}"
+                    )
+                    stack = Stack(manifest=stack_dict)
+                    stack.apply(self.launcher)
+                    response.success = True
+                    response.err_msg = ""
+                else:
+                    response.success = False
+                    response.err_msg = "No valid stack data found for apply operation."
+            else:
+                response.success = False
+                response.err_msg = "No current stack available for apply operation."
         except Exception as e:
             self.get_logger().error(f"Exception occurred during apply: {e}")
             response.err_msg = str(e)
             response.success = False
+        response.output.current = request.input.current
         return response
 
     def _launch_via_ros2(self, launch_file: str) -> None:

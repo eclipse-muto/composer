@@ -35,12 +35,7 @@ class TestMutoProvisionPlugin(unittest.TestCase):
     def setUp(self):
         self.node = MutoProvisionPlugin()
         self.node.get_logger = MagicMock()
-        self.node.current_stack = MagicMock()
-        self.node.current_stack.name = "Test Stack"
-        self.node.current_stack.url = "http://example.com/repo.git"
-        self.node.current_stack.branch = "main"
-        self.node.current_stack.stack = json.dumps({})
-        self.node.current_stack.source = json.dumps({})
+        # Don't set current_stack here - let handle_provision parse it from the request
 
     def tearDown(self):
         self.node.destroy_node()
@@ -53,20 +48,28 @@ class TestMutoProvisionPlugin(unittest.TestCase):
     ):
         request = MagicMock()
         request.start = True
+        request.input.current.url = "http://github.com/composer.git"
+        request.input.current.branch = "main"
+        # Use structure matching talker-listener-xarchive.json
+        stack_data = {
+            "metadata": {
+                "name": "Test Stack",
+                "description": "A test stack",
+                "content_type": "stack/json"
+            },
+            "launch": {
+                "node": [{"name": "test_node"}]
+            }
+        }
+        request.input.current.stack = json.dumps(stack_data)
         response = MagicMock()
-        self.node.current_stack = MagicMock()
-        self.node.current_stack.url = "http://github.com/composer.git"
-        self.node.current_stack.branch = "main"
-        self.node.current_stack.stack = json.dumps({})
-        self.node.current_stack.source = json.dumps({})
-        self.node.current_stack.name = "Test Stack"
         self.node.is_up_to_date = False
 
         self.node.handle_provision(request, response)
 
         mock_from_git.assert_called_once_with(
-            repo_url=self.node.current_stack.url,
-            branch=self.node.current_stack.branch,
+            repo_url=request.input.current.url,
+            branch=request.input.current.branch,
         )
         mock_install_dependencies.assert_called_once()
         mock_build_workspace.assert_called_once()
@@ -81,20 +84,28 @@ class TestMutoProvisionPlugin(unittest.TestCase):
     ):
         request = MagicMock()
         request.start = True
+        request.input.current.url = "http://github.com/composer.git"
+        request.input.current.branch = "main" 
+        # Use structure matching talker-listener-xarchive.json
+        stack_data = {
+            "metadata": {
+                "name": "Test Stack",
+                "description": "A test stack",
+                "content_type": "stack/json"
+            },
+            "launch": {
+                "node": [{"name": "test_node"}]
+            }
+        }
+        request.input.current.stack = json.dumps(stack_data)
         response = MagicMock()
-        self.node.current_stack = MagicMock()
-        self.node.current_stack.url = "http://github.com/composer.git"
-        self.node.current_stack.branch = "main"
-        self.node.current_stack.stack = json.dumps({})
-        self.node.current_stack.source = json.dumps({})
-        self.node.current_stack.name = "Test Stack"
         self.node.is_up_to_date = True
 
         self.node.handle_provision(request, response)
 
         mock_from_git.assert_called_once_with(
-            repo_url=self.node.current_stack.url,
-            branch=self.node.current_stack.branch,
+            repo_url=request.input.current.url,
+            branch=request.input.current.branch,
         )
         mock_install_dependencies.assert_not_called()
         mock_build_workspace.assert_not_called()
@@ -109,15 +120,27 @@ class TestMutoProvisionPlugin(unittest.TestCase):
     ):
         request = MagicMock()
         request.start = True
+        request.input.current.url = ""
         response = MagicMock()
+        # Use real archive structure from talker-listener-xarchive.json
         artifact_manifest = {
-            "artifact": {
-                "type": "archive",
-                "data": "ZHVtbXk=",
+            "metadata": {
+                "name": "Muto Simple Talker-Listener Stack",
+                "description": "A simple talker-listener stack example",
+                "content_type": "stack/archive"
+            },
+            "launch": {
+                "data": "ZHVtbXk=",  # base64 encoded dummy data
+                "properties": {
+                    "algorithm": "sha256",
+                    "checksum": "553fd2dc7d0eb41e7d65c467d358e7962d3efbb0e2f2e4f8158e926a081f96d0",
+                    "launch_file": "launch/talker_listener.launch.py",
+                    "command": "launch",
+                    "flatten": True
+                }
             }
         }
-        self.node.current_stack.stack = json.dumps(artifact_manifest)
-        self.node.current_stack.url = ""
+        request.input.current.stack = json.dumps(artifact_manifest)
 
         def mark_dirty(_):
             self.node.is_up_to_date = False
@@ -139,15 +162,27 @@ class TestMutoProvisionPlugin(unittest.TestCase):
     ):
         request = MagicMock()
         request.start = True
+        request.input.current.url = ""
         response = MagicMock()
+        # Use real archive structure from talker-listener-xarchive.json
         artifact_manifest = {
-            "artifact": {
-                "type": "archive",
-                "data": "ZHVtbXk=",
+            "metadata": {
+                "name": "Muto Simple Talker-Listener Stack",
+                "description": "A simple talker-listener stack example",
+                "content_type": "stack/archive"
+            },
+            "launch": {
+                "data": "ZHVtbXk=",  # base64 encoded dummy data
+                "properties": {
+                    "algorithm": "sha256",
+                    "checksum": "553fd2dc7d0eb41e7d65c467d358e7962d3efbb0e2f2e4f8158e926a081f96d0",
+                    "launch_file": "launch/talker_listener.launch.py",
+                    "command": "launch",
+                    "flatten": True
+                }
             }
         }
-        self.node.current_stack.stack = json.dumps(artifact_manifest)
-        self.node.current_stack.url = ""
+        request.input.current.stack = json.dumps(artifact_manifest)
 
         def mark_clean(_):
             self.node.is_up_to_date = True
@@ -164,19 +199,24 @@ class TestMutoProvisionPlugin(unittest.TestCase):
     def test_handle_provision_no_artifact_or_repo(self):
         request = MagicMock()
         request.start = True
+        request.input.current.url = ""
+        # Use proper structure but no archive data and no repo URL
+        stack_data = {
+            "metadata": {
+                "name": "Test Stack",
+                "description": "A test stack without repo or archive"
+            },
+            "launch": {
+                "node": [{"name": "test_node"}]
+            }
+        }
+        request.input.current.stack = json.dumps(stack_data)
         response = MagicMock()
-        self.node.current_stack = MagicMock()
-        self.node.current_stack.url = ""
-        self.node.current_stack.stack = json.dumps({})
-        self.node.current_stack.name = "Test Stack"
 
         result = self.node.handle_provision(request, response)
 
-        self.assertFalse(result.success)
-        self.assertEqual(
-            result.err_msg,
-            "Stack does not define a repository or archive artifact.",
-        )
+        self.assertFalse(response.success)
+        self.assertEqual(response.err_msg, "Stack does not define a repository or archive artifact.")
 
     def test_handle_provision_start_false(self):
         request = MagicMock()
@@ -203,10 +243,20 @@ class TestMutoProvisionPlugin(unittest.TestCase):
     def test_handle_provision_exception(self, mock_from_git):
         request = MagicMock()
         request.start = True
+        request.input.current.url = "http://github.com/composer.git" 
+        request.input.current.branch = "main"
+        # Use proper structure
+        stack_data = {
+            "metadata": {
+                "name": "Test Stack",
+                "description": "A test stack"
+            },
+            "launch": {
+                "node": [{"name": "test_node"}]
+            }
+        }
+        request.input.current.stack = json.dumps(stack_data)
         response = MagicMock()
-        self.node.current_stack = MagicMock()
-        self.node.current_stack.stack = json.dumps({})
-        self.node.current_stack.name = "Test Stack"
         mock_from_git.side_effect = Exception("Test Exception")
 
         self.node.handle_provision(request, response)
@@ -366,8 +416,7 @@ class TestMutoProvisionPlugin(unittest.TestCase):
         mock_subprocess_run.assert_has_calls(expected_calls)
 
     def test_get_workspace_dir(self):
-        self.node.current_stack = MagicMock()
-        self.node.current_stack.name = "Test Stack"
+        self.node.current_stack = {"name": "Test Stack"}
 
         workspace_dir = self.node.get_workspace_dir()
 
@@ -394,14 +443,15 @@ class TestMutoProvisionPlugin(unittest.TestCase):
         mock_join,
         mock_exist,
     ):
-        self.node.current_stack = MagicMock()
+        self.node.current_stack = {"name": "Test Stack"}
+        mock_exist.return_value = True  # Mock that .git directory exists
         repo_url = "http://github.com/composer.git"
         branch = "main"
 
         self.node.from_git(repo_url, branch)
-        mock_update_repository.assert_called_once_with(mock_join(), "main")
+        mock_update_repository.assert_called_once_with(mock_join.return_value, "main")
         mock_clone_repository.assert_not_called()
-        mock_checkout_and_check_submodules.assert_called_once_with(mock_join(), "main")
+        mock_checkout_and_check_submodules.assert_called_once_with(mock_join.return_value, "main")
         mock_join.assert_called()
         mock_exist.assert_called_once()
 
@@ -486,10 +536,12 @@ class TestMutoProvisionPlugin(unittest.TestCase):
         )
 
         self.assertFalse(result)
+        # The actual path should be an os.path.join result
+        expected_submodule_path = os.path.join(target_dir, "submodule1")
         mock_run.assert_called_once_with(
             ["git", "checkout", "test_branch"],
             check=True,
-            cwd="/var/tmp/muto_workspaces/Test_Stack/submodule1",
+            cwd=expected_submodule_path,
         )
 
     @patch("subprocess.check_output")
@@ -506,3 +558,291 @@ class TestMutoProvisionPlugin(unittest.TestCase):
 
         self.assertFalse(result)
         mock_run.assert_not_called()
+
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_stack_json_content_type(self, mock_from_git):
+        """Test handle_provision with stack/json content_type falls back to git."""
+        request = MagicMock()
+        request.start = True
+        request.input.current.url = "http://example.com/repo.git"
+        request.input.current.branch = "main"
+        response = MagicMock()
+        
+        # Mock is_up_to_date to be False so dependencies and build are called
+        self.node.is_up_to_date = False
+        
+        # Mock the dependencies and build methods
+        with patch.object(self.node, 'install_dependencies') as mock_install, \
+             patch.object(self.node, 'build_workspace') as mock_build:
+            
+            # Payload with stack/json content_type using proper structure
+            json_manifest = {
+                "metadata": {
+                    "name": "test-json-stack",
+                    "description": "A test JSON stack",
+                    "content_type": "stack/json"
+                },
+                "launch": {
+                    "node": [{"name": "test_node"}]
+                }
+            }
+            request.input.current.stack = json.dumps(json_manifest)
+
+            self.node.handle_provision(request, response)
+
+            # Should call from_git since stack/json doesn't have special provision handling
+            mock_from_git.assert_called_once_with(
+                repo_url="http://example.com/repo.git",
+                branch="main"
+            )
+            mock_install.assert_called_once()
+            mock_build.assert_called_once()
+            self.assertTrue(response.success)
+
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_unknown_content_type(self, mock_from_git):
+        """Test handle_provision with unknown content_type falls back to git."""
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        
+        # Set actual values instead of letting MagicMock create placeholders
+        request.input.current.url = "http://example.com/repo.git"
+        request.input.current.branch = "main"
+        
+        # Mock the dependencies and build methods since they might be called
+        with patch.object(self.node, 'install_dependencies') as mock_install, \
+             patch.object(self.node, 'build_workspace') as mock_build:
+            
+            # Set is_up_to_date to False so we can track the install/build calls
+            self.node.is_up_to_date = False
+        
+            # Payload with unknown content_type
+            unknown_manifest = {
+                "metadata": {
+                    "name": "test-unknown-stack",
+                    "content_type": "unknown/type"
+                },
+                "custom": {
+                    "data": "some_data"
+                }
+            }
+            request.input.current.stack = json.dumps(unknown_manifest)
+
+            self.node.handle_provision(request, response)
+
+            # Should call from_git since unknown content_type doesn't have special handling
+            mock_from_git.assert_called_once_with(
+                repo_url="http://example.com/repo.git",
+                branch="main"
+            )
+            mock_install.assert_called_once()
+            mock_build.assert_called_once()
+            self.assertTrue(response.success)
+
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_missing_content_type(self, mock_from_git):
+        """Test handle_provision with missing content_type falls back to git."""
+        request = MagicMock()
+        request.start = True
+        request.input.current.url = "http://example.com/repo.git"
+        request.input.current.branch = "main"
+        response = MagicMock()
+        
+        # Payload without content_type
+        no_content_type_manifest = {
+            "metadata": {
+                "name": "test-no-content-type-stack"
+            },
+            "launch": {
+                "data": "ZHVtbXk="
+            }
+        }
+        request.input.current.stack = json.dumps(no_content_type_manifest)
+
+        self.node.handle_provision(request, response)
+
+        # Should call from_git since missing content_type doesn't trigger archive handling
+        mock_from_git.assert_called_once_with(
+            repo_url="http://example.com/repo.git",
+            branch="main"
+        )
+        self.assertTrue(response.success)
+
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_invalid_json_payload(self, mock_from_git):
+        """Test handle_provision with invalid JSON payload falls back to git."""
+        request = MagicMock()
+        request.start = True
+        request.input.current.url = "http://example.com/repo.git"
+        request.input.current.branch = "main"
+        response = MagicMock()
+        
+        # Invalid JSON in stack field - becomes None when parsed
+        request.input.current.stack = "invalid json {"
+
+        self.node.handle_provision(request, response)
+
+        # Should NOT call from_git since parsed stack will be None for invalid JSON
+        mock_from_git.assert_not_called()
+        self.assertFalse(response.success)
+        self.assertEqual(response.err_msg, "No current stack received.")
+
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_missing_content_type(self, mock_from_git):
+        """Test handle_provision with missing content_type falls back to git."""
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        
+        # Set actual values instead of letting MagicMock create placeholders
+        request.input.current.url = "http://example.com/repo.git"
+        request.input.current.branch = "main"
+        
+        # Mock the dependencies and build methods since they might be called
+        with patch.object(self.node, 'install_dependencies') as mock_install, \
+             patch.object(self.node, 'build_workspace') as mock_build:
+            
+            # Set is_up_to_date to False so we can track the install/build calls
+            self.node.is_up_to_date = False
+        
+            # Payload without content_type - parser returns None
+            no_content_type_manifest = {
+                "metadata": {
+                    "name": "test-no-content-type-stack"
+                },
+                "launch": {
+                    "data": "ZHVtbXk="
+                }
+            }
+            request.input.current.stack = json.dumps(no_content_type_manifest)
+
+            self.node.handle_provision(request, response)
+
+            # Should call from_git since parser returns None for unknown format
+            mock_from_git.assert_called_once_with(
+                repo_url="http://example.com/repo.git",
+                branch="main"
+            )
+            mock_install.assert_called_once()
+            mock_build.assert_called_once()
+            self.assertTrue(response.success)
+
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_no_metadata_falls_back_to_git(self, mock_from_git):
+        """Test handle_provision with payload missing metadata falls back to git."""
+        request = MagicMock()
+        request.start = True
+        request.input.current.url = "http://example.com/repo.git"
+        request.input.current.branch = "main"
+        response = MagicMock()
+        
+        # Payload without metadata - parser returns None
+        no_metadata_payload = {
+            "launch": {
+                "data": "ZHVtbXk="
+            }
+        }
+        request.input.current.stack = json.dumps(no_metadata_payload)
+
+        self.node.handle_provision(request, response)
+
+        # Should call from_git since parser returns None for unknown format
+        mock_from_git.assert_called_once_with(
+            repo_url="http://example.com/repo.git",
+            branch="main"
+        )
+        self.assertTrue(response.success)
+
+    def test_handle_provision_stack_archive_no_url_fails(self):
+        """Test handle_provision fails when stack/archive has no data or URL."""
+        request = MagicMock()
+        request.start = True
+        request.input.current.url = ""  # No URL
+        response = MagicMock()
+        
+        # Archive payload with no data and no URL
+        archive_manifest = {
+            "metadata": {
+                "name": "test-archive-no-data-url",
+                "content_type": "stack/archive"
+            },
+            "launch": {
+                "properties": {
+                    "filename": "dummy.tar.gz"
+                }
+            }
+        }
+        request.input.current.stack = json.dumps(archive_manifest)
+
+        self.node.handle_provision(request, response)
+
+        # Should fail because archive specification must include data or url
+        self.assertFalse(response.success)
+        self.assertIn("must include either 'data' or 'url'", response.err_msg)
+
+    def test_handle_provision_stack_archive_no_url_fails(self):
+        """Test handle_provision fails when stack/archive has no data or URL."""
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        
+        # Archive payload with no data and no URL in launch
+        archive_manifest = {
+            "metadata": {
+                "name": "test-archive-no-data-url",
+                "content_type": "stack/archive"
+            },
+            "launch": {
+                "properties": {
+                    "filename": "dummy.tar.gz"
+                }
+            }
+        }
+        request.input.current.stack = json.dumps(archive_manifest)
+        request.input.current.source = json.dumps({
+            "url": ""  # No URL
+        })
+
+        self.node.handle_provision(request, response)
+
+        # Should fail because archive specification must include data or url
+        self.assertFalse(response.success)
+        self.assertIn("must include either 'data' or 'url'", response.err_msg)
+
+    @patch.object(MutoProvisionPlugin, "from_git")
+    def test_handle_provision_no_metadata_falls_back_to_git(self, mock_from_git):
+        """Test handle_provision with payload missing metadata falls back to git."""
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        
+        # Set actual values instead of letting MagicMock create placeholders
+        request.input.current.url = "http://example.com/repo.git"
+        request.input.current.branch = "main"
+        
+        # Mock the dependencies and build methods since they might be called
+        with patch.object(self.node, 'install_dependencies') as mock_install, \
+             patch.object(self.node, 'build_workspace') as mock_build:
+            
+            # Set is_up_to_date to False so we can track the install/build calls
+            self.node.is_up_to_date = False
+        
+            # Payload without metadata
+            no_metadata_payload = {
+                "launch": {
+                    "data": "ZHVtbXk="
+                }
+            }
+            request.input.current.stack = json.dumps(no_metadata_payload)
+
+            self.node.handle_provision(request, response)
+
+            # Should call from_git since no metadata means no content_type check
+            mock_from_git.assert_called_once_with(
+                repo_url="http://example.com/repo.git",
+                branch="main"
+            )
+            mock_install.assert_called_once()
+            mock_build.assert_called_once()
+            self.assertTrue(response.success)

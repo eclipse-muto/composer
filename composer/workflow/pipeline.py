@@ -12,7 +12,9 @@
 #
 
 import importlib
+import json
 import uuid
+from muto_msgs.msg._stack_manifest import StackManifest
 import rclpy
 from rclpy.node import Node
 import rclpy.logging
@@ -85,7 +87,7 @@ class Pipeline:
                     )
         return plugin_dict
 
-    def execute_pipeline(self, additional_context: dict = None):
+    def execute_pipeline(self, additional_context: dict = None, next_manifest=None):
         """
         Execute each pipeline step sequentially.
         If a step fails, execute compensation steps and abort the pipeline.
@@ -100,6 +102,11 @@ class Pipeline:
         executor = rclpy.create_node(f"{self.name}_pipeline_executor", enable_rosout=False)
         failed = False
 
+        ## Request and responses are chained to pass stack manifests between steps
+        ##.  initial request = xxx
+        ##.  repeat all steps (nextstep):
+        #        request = nextstep(request)
+        input_manifest = self.toStackManifest(next_manifest)
         for item in self.steps:
             if failed:
                 break
@@ -125,18 +132,17 @@ class Pipeline:
                         break
 
                 try:
-                    response = self.execute_step(step, executor)
-                    
+
+                    response = self.execute_step(step, executor, inputManifest=input_manifest)
                     if not response:
                         response = type("Response", (), {"success": False, "err_msg": "No response from service."})()
                         self.logger.error(f"Step {step_name} failed due to no response.")
-
                     # Store the response in context regardless of success or failure
                     self.context[step_name] = response  
 
                     if not response.success:
                         raise Exception(f"Step execution error: {response.err_msg}")
-
+                    input_manifest = response.output.current
                     self.logger.info(f"Step passed: {step_name}")
 
                 except Exception as e:
@@ -149,7 +155,7 @@ class Pipeline:
 
         executor.destroy_node()
 
-    def execute_step(self, step, executor: Node):
+    def execute_step(self, step, executor: Node, inputManifest=None):
         """
         Executes a single step using the appropriate ROS 2 service.
 
@@ -182,8 +188,15 @@ class Pipeline:
             )
             return None
 
+        ## Request and responses are chained to pass stack manifests between steps
+        ##.  initial request = xxx
+        ##.  repeat all steps (nextstep):
+        #        request = nextstep(request)
         req = plugin.Request()
+        if inputManifest:
+            req.input.current = inputManifest
         req.start = True
+            
         future = cli.call_async(req)
         rclpy.spin_until_future_complete(executor, future)
 
@@ -210,3 +223,11 @@ class Pipeline:
                     )
         else:
             self.logger.warn("No compensation steps to execute.")
+    
+    def toStackManifest(self, manifest):
+        if manifest is None:
+            return None
+        stack_msg = StackManifest()
+        stack_msg.name = manifest.get("name", "")
+        stack_msg.stack = json.dumps(manifest)
+        return stack_msg       

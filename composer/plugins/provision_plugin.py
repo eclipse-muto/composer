@@ -32,6 +32,7 @@ from muto_msgs.srv import ProvisionPlugin
 
 WORKSPACES_PATH = os.path.join("/var", "tmp", "muto_workspaces")
 ARTIFACT_STATE_FILE = ".muto_artifact.json"
+from composer.utils.stack_parser import StackParser
 
 
 class MutoProvisionPlugin(Node):
@@ -42,6 +43,7 @@ class MutoProvisionPlugin(Node):
 
         self.current_stack: StackManifest | None = None
         self.is_up_to_date = False
+        self.stack_parser = StackParser(self.get_logger())
 
         self.declare_parameter("ignored_packages", [""])
         self.ignored_packages = [
@@ -52,7 +54,7 @@ class MutoProvisionPlugin(Node):
             if pkg
         ]
 
-        self.create_subscription(StackManifest, "composed_stack", self.get_stack, 10)
+        # self.create_subscription(StackManifest, "composed_stack", self.get_stack, 10)
         self.provision_srv = self.create_service(
             ProvisionPlugin, "muto_provision", self.handle_provision
         )
@@ -111,17 +113,18 @@ class MutoProvisionPlugin(Node):
             shutil.rmtree(workspace_dir, ignore_errors=True)
         os.makedirs(workspace_dir, exist_ok=True)
 
-    def _prepare_archive(self, artifact: Dict[str, Any], temp_dir: str) -> tuple[str, Dict[str, Any]]:
+    def _prepare_archive(self, manifest: Dict[str, Any], temp_dir: str) -> tuple[str, Dict[str, Any]]:
+        artifact = manifest.get("launch", {})
         data_b64 = artifact.get("data")
         url = artifact.get("url")
+        props = artifact.get("properties", {})
+        metadata = manifest.get("metadata", {})
 
         if not data_b64 and not url:
             raise ValueError("Artifact specification must include either 'data' or 'url'.")
 
-        metadata: Dict[str, Any] = {}
-
         if data_b64:
-            filename = artifact.get("filename") or artifact.get("name") or "artifact.tar"
+            filename = props.get("filename") or metadata.get("name") or "artifact.tar"
             archive_path = os.path.join(temp_dir, filename)
             try:
                 decoded_bytes = base64.b64decode(data_b64, validate=True)
@@ -131,8 +134,8 @@ class MutoProvisionPlugin(Node):
             with open(archive_path, "wb") as file_handle:
                 file_handle.write(decoded_bytes)
 
-            checksum = artifact.get("checksum")
-            algorithm = artifact.get("algorithm", "sha256")
+            checksum = props.get("checksum")
+            algorithm = props.get("algorithm", "sha256")
             if checksum:
                 self._verify_checksum(archive_path, checksum, algorithm)
 
@@ -267,12 +270,13 @@ class MutoProvisionPlugin(Node):
             repo_url (str): The URL of the git repository.
             branch (str): The branch to check out.
         """
-        if not self.current_stack:
-            self.get_logger().error("No current stack available.")
+        if not self.current_stack or not isinstance(self.current_stack, dict):
+            self.get_logger().error("No valid current stack available.")
             return
 
+        stack_name = self.current_stack.get("name", "default")
         target_dir = os.path.join(
-            WORKSPACES_PATH, self.current_stack.name.replace(" ", "_")
+            WORKSPACES_PATH, stack_name.replace(" ", "_")
         )
 
         if os.path.exists(os.path.join(target_dir, ".git")):
@@ -283,24 +287,25 @@ class MutoProvisionPlugin(Node):
         submodules_up_to_date = self.checkout_and_check_submodules(target_dir, branch)
         self.is_up_to_date = self.is_up_to_date and submodules_up_to_date
 
-    def from_archive(self, artifact: Dict[str, Any]) -> None:
+    def from_archive(self, manifest: Dict[str, Any]) -> None:
         """Download and extract an archive described in the stack manifest."""
         if not self.current_stack:
             self.get_logger().error("No current stack available.")
             return
-
+        artifact = manifest.get("launch", {})
         workspace_dir = self.get_workspace_dir()
         if not workspace_dir:
             return
 
+        props = artifact.get("properties", {})  
         base_state = {
             "type": "archive",
-            "subdir": artifact.get("subdir"),
-            "flatten": artifact.get("flatten", True),
+            "subdir": props.get("subdir"),
+            "flatten": props.get("flatten", True),
         }
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            archive_path, state_info = self._prepare_archive(artifact, temp_dir)
+            archive_path, state_info = self._prepare_archive(manifest, temp_dir)
 
             desired_state = {**base_state, **state_info}
             current_state = self._load_artifact_state(workspace_dir)
@@ -316,7 +321,7 @@ class MutoProvisionPlugin(Node):
                 f"Workspace contents after extraction: {os.listdir(workspace_dir)}"
             )
 
-        subdir = artifact.get("subdir")
+        subdir = props.get("subdir")
         if subdir:
             resolved_subdir = os.path.join(workspace_dir, subdir)
             if os.path.isdir(resolved_subdir):
@@ -325,7 +330,7 @@ class MutoProvisionPlugin(Node):
                 self.get_logger().warning(
                     f"Artifact subdirectory '{subdir}' not found; continuing without flattening."
                 )
-        elif artifact.get("flatten", True):
+        elif props.get("flatten", True):
             self._flatten_single_directory(workspace_dir)
 
         self._write_artifact_state(workspace_dir, {**base_state, **state_info})
@@ -562,19 +567,37 @@ class MutoProvisionPlugin(Node):
         self, request: ProvisionPlugin.Request, response: ProvisionPlugin.Response
     ):
         """Service handler to prepare the workspace."""
+        self.current_stack = self._safely_parse_stack(request.input.current.stack)
         try:
             if request.start:
                 if self.current_stack:
-                    manifest = self._load_stack_manifest()
-                    artifact = manifest.get("artifact", {}) if isinstance(manifest, dict) else {}
-                    artifact_type = str(artifact.get("type", "")).lower()
-
-                    if artifact_type == "archive":
-                        self.from_archive(artifact)
-                    elif self.current_stack.url:
+                    # Parse payload and determine type
+                    
+                    
+                    if self.current_stack :
+                        metadata = self.current_stack.get("metadata", {})
+                        content_type = None
+                        if metadata is not None:
+                            content_type = metadata.get("content_type")
+                        self.get_logger().info(f"provisioning stack with content_type: {content_type}")
+                        if content_type == "stack/archive":
+                            self.from_archive(self.current_stack)
+                        elif request.input.current.url:
+                            self.from_git(
+                                repo_url=request.input.current.url,
+                                branch=request.input.current.branch,
+                            )
+                        else:
+                            response.err_msg = (
+                                "Stack does not define a repository or archive artifact."
+                            )
+                            response.success = False
+                            self.get_logger().error(response.err_msg)
+                            return response
+                    elif request.input.current.url:
                         self.from_git(
-                            repo_url=self.current_stack.url,
-                            branch=self.current_stack.branch,
+                            repo_url=request.input.current.url,
+                            branch=request.input.current.branch,
                         )
                     else:
                         response.err_msg = (
@@ -610,14 +633,43 @@ class MutoProvisionPlugin(Node):
             self.get_logger().error(f"Exception: {e}")
             response.err_msg = f"Error: {e}"
             response.success = False
+            
+        response.output.current = request.input.current
         return response
 
     def get_workspace_dir(self) -> str:
         """Get the workspace directory for the current stack."""
-        if not self.current_stack:
-            self.get_logger().error("No current stack available.")
+        if not self.current_stack or not isinstance(self.current_stack, dict):
+            self.get_logger().error("No valid current stack available.")
             return ""
-        return os.path.join(WORKSPACES_PATH, self.current_stack.name.replace(" ", "_"))
+        
+        metadata = self.current_stack.get("metadata", {})
+        name = metadata.get("name", self.current_stack.get("name", "default"))
+        return os.path.join(WORKSPACES_PATH, name.replace(" ", "_"))
+
+    def _safely_parse_stack(self, stack_string):
+        """
+        Safely parse a stack string to JSON. Returns dictionary if valid JSON, None otherwise.
+        
+        Args:
+            stack_string (str): The stack string to parse
+            
+        Returns:
+            dict or None: Parsed JSON dictionary or None if parsing fails
+        """
+        if not stack_string:
+            return None
+            
+        try:
+            parsed = json.loads(stack_string)
+            if isinstance(parsed, dict):
+                return parsed
+            else:
+                self.get_logger().warning(f"Stack string parsed to non-dict type: {type(parsed)}")
+                return None
+        except (json.JSONDecodeError, TypeError) as e:
+            self.get_logger().warning(f"Failed to parse stack string as JSON: {e}")
+            return None
 
 
 def main():

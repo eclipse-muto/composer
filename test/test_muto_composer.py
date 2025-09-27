@@ -160,13 +160,18 @@ class TestMutoComposer(unittest.TestCase):
         mock_pb_raw_stack,
         mock_pipeline_execute,
     ):
-        mock_future.result().return_value = MagicMock()
-        mock_future.result().output = json.dumps({"output": "test_out"})
+        mock_result = MagicMock()
+        mock_result.output = json.dumps({"output": "test_out"})
+        mock_future.result.return_value = mock_result
+        
+        # Mock resolve_expression to return a valid JSON string
+        mock_resolve_expression.return_value = '{"output": "test_out"}'
+        
         self.node.activate(future=mock_future)
         mock_resolve_expression.assert_called_once_with('{"output": "test_out"}')
         mock_pb_current_stack.assert_called_once()
         mock_pb_raw_stack.assert_called_once()
-        mock_pipeline_execute.assert_called_once_with("start")
+        mock_pipeline_execute.assert_called_once_with("start", None, {"output": "test_out"})
 
     @patch.object(MutoComposer, "get_logger")
     def test_activate_no_default_stack(self, mock_get_logger):
@@ -444,7 +449,8 @@ class TestMutoComposer(unittest.TestCase):
 
         self.node.pipeline_execute.assert_called_once_with(
             self.node.method,
-            {"should_run_provision": True, "should_run_launch": True},
+            {"should_run_provision": False, "should_run_launch": True},
+            self.node.current_stack,
         )
 
     def test_extract_stack_from_solution(self):
@@ -464,15 +470,111 @@ class TestMutoComposer(unittest.TestCase):
             }
         }
 
-        decoded = self.node._extract_stack_from_solution(solution_payload)
+        decoded = self.node.stack_parser.parse_payload(solution_payload)
         self.assertEqual(decoded, stack_payload)
+
+    def test_parse_payload_non_dict(self):
+        """Test that parse_payload returns None for non-dict payloads"""
+        result = self.node.stack_parser.parse_payload("not a dict")
+        self.assertIsNone(result)
+
+    def test_parse_payload_with_value_key(self):
+        """Test that parse_payload returns payload as-is when it has a 'value' key"""
+        payload = {"value": {"stackId": "test-stack"}}
+        result = self.node.stack_parser.parse_payload(payload)
+        self.assertEqual(result, payload)
+
+    def test_parse_payload_direct_stack_json(self):
+        """Test parsing direct stack JSON format"""
+        payload = {
+            "metadata": {
+                "name": "Test Stack",
+                "content_type": "stack/json"
+            },
+            "launch": {
+                "node": [
+                    {
+                        "name": "test_node",
+                        "pkg": "test_pkg",
+                        "exec": "test_exec"
+                    }
+                ]
+            }
+        }
+        result = self.node.stack_parser.parse_payload(payload)
+        expected = payload  # Now returns the full payload
+        self.assertEqual(result, expected)
+
+    def test_parse_payload_archive_format(self):
+        """Test parsing archive format"""
+        payload = {
+            "metadata": {
+                "name": "Test Archive Stack",
+                "content_type": "stack/archive"
+            },
+            "launch": {
+                "data": "dGVzdCBkYXRh",  # base64 encoded "test data"
+                "properties": {
+                    "launch_file": "launch/test.launch.py",
+                    "command": "launch",
+                    "launch_args": [
+                        {"name": "arg1", "default": "val1"}
+                    ]
+                }
+            }
+        }
+        result = self.node.stack_parser.parse_payload(payload)
+        self.assertIsNotNone(result)
+        # The parser returns the original payload structure
+        self.assertEqual(result["metadata"]["content_type"], "stack/archive")
+        self.assertEqual(result["launch"]["data"], "dGVzdCBkYXRh")
+        self.assertEqual(result["launch"]["properties"]["launch_file"], "launch/test.launch.py")
+        self.assertEqual(result["launch"]["properties"]["command"], "launch")
+        self.assertEqual(result["launch"]["properties"]["launch_args"], [{"name": "arg1", "default": "val1"}])
+
+    def test_parse_payload_unparseable(self):
+        """Test that parse_payload returns None for unparseable payloads"""
+        payload = {
+            "unknown": "format",
+            "no": "matching keys"
+        }
+        result = self.node.stack_parser.parse_payload(payload)
+        self.assertIsNone(result)
+
+    def test_parse_payload_direct_stack_json_string_launch(self):
+        """Test parsing direct stack JSON format with string launch data"""
+        payload = {
+            "metadata": {
+                "content_type": "stack/json"
+            },
+            "launch": '{"node": [{"name": "string_node", "pkg": "string_pkg"}]}'
+        }
+        result = self.node.stack_parser.parse_payload(payload)
+        expected = payload  # Now returns the full payload
+        self.assertEqual(result, expected)
+
+    def test_parse_payload_invalid_direct_stack_json(self):
+        """Test parsing invalid direct stack JSON format"""
+        payload = {
+            "metadata": {
+                "content_type": "stack/json"
+            },
+            "launch": "invalid json string {{{"
+        }
+        result = self.node.stack_parser.parse_payload(payload)
+        self.assertEqual(result, payload)  # Now returns the payload even if launch is invalid
 
     def test_determine_execution_path_with_artifact(self):
         artifact_stack = {
-            "artifact": {
-                "type": "archive",
+            "metadata": {
+                "name": "test-artifact",
+                "content_type": "stack/archive"
+            },
+            "launch": {
                 "data": "ZHVtbXk=",
-                "filename": "dummy.tar.gz",
+                "properties": {
+                    "filename": "dummy.tar.gz"
+                }
             }
         }
         self.node.current_stack = {}
@@ -484,26 +586,35 @@ class TestMutoComposer(unittest.TestCase):
         self.node.pipeline_execute.assert_called_once_with(
             self.node.method,
             {"should_run_provision": True, "should_run_launch": True},
+            self.node.current_stack,
         )
 
-    @patch("composer.muto_composer.Stack")
-    def test_merge(self, mock_stack):
-        stack1 = {"node": ["node1"], "composable": ["comp1"]}
-        stack2 = {"node": ["node2"], "args": {"arg1": "value1"}}
+    def test_merge(self):
+        stack1 = {"node": [{"name": "node1", "pkg": "pkg1"}], "composable": [{"name": "comp1", "package": "pkg1"}]}
+        stack2 = {"node": [{"name": "node2", "pkg": "pkg2"}], "arg": [{"name": "arg1", "value": "value1"}]}
 
         merged = self.node.merge(stack1, stack2)
 
-        self.assertEqual(mock_stack.call_count, 2)
+        # Check that merged has the expected structure
+        self.assertIn("node", merged)
+        self.assertIn("composable", merged)
+        self.assertEqual(len(merged["node"]), 2)  # node1 and node2
+        self.assertEqual(len(merged["composable"]), 1)
+        self.assertEqual(merged["composable"][0]["name"], "comp1")
 
         merged = self.node.merge(None, stack2)
-        self.assertEqual(merged, stack2)
+        self.assertIn("node", merged)
+        self.assertEqual(len(merged["node"]), 1)
+        self.assertEqual(merged["node"][0]["name"], "node2")
+        self.assertIn("arg", merged)
+        self.assertEqual(merged["arg"], [{"name": "arg1", "value": "value1"}])
 
     def test_pipeline_execute_valid(self):
         test_pipeline = MagicMock()
         self.node.pipelines = {"test_pipeline": test_pipeline}
-        self.node.pipeline_execute("test_pipeline", {"key": "value"})
+        self.node.pipeline_execute("test_pipeline", {"key": "value"}, None)
         test_pipeline.execute_pipeline.assert_called_once_with(
-            additional_context={"key": "value"}
+            additional_context={"key": "value"}, next_manifest=None
         )
 
     @patch.object(MutoComposer, "get_logger")
