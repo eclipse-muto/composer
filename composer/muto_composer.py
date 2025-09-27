@@ -127,7 +127,7 @@ class MutoComposer(Node):
                 )
                 self.publish_current_stack(resolved_stack)
                 self.publish_raw_stack(resolved_stack)
-                self.pipeline_execute("start", json.loads(resolved_stack))
+                self.pipeline_execute("start", None, json.loads(resolved_stack))
             else:
                 self.get_logger().error(
                     "No default stack received. Aborting bootstrap."

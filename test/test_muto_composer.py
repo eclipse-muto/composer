@@ -160,13 +160,18 @@ class TestMutoComposer(unittest.TestCase):
         mock_pb_raw_stack,
         mock_pipeline_execute,
     ):
-        mock_future.result().return_value = MagicMock()
-        mock_future.result().output = json.dumps({"output": "test_out"})
+        mock_result = MagicMock()
+        mock_result.output = json.dumps({"output": "test_out"})
+        mock_future.result.return_value = mock_result
+        
+        # Mock resolve_expression to return a valid JSON string
+        mock_resolve_expression.return_value = '{"output": "test_out"}'
+        
         self.node.activate(future=mock_future)
         mock_resolve_expression.assert_called_once_with('{"output": "test_out"}')
         mock_pb_current_stack.assert_called_once()
         mock_pb_raw_stack.assert_called_once()
-        mock_pipeline_execute.assert_called_once_with("start")
+        mock_pipeline_execute.assert_called_once_with("start", None, {"output": "test_out"})
 
     @patch.object(MutoComposer, "get_logger")
     def test_activate_no_default_stack(self, mock_get_logger):
@@ -445,6 +450,7 @@ class TestMutoComposer(unittest.TestCase):
         self.node.pipeline_execute.assert_called_once_with(
             self.node.method,
             {"should_run_provision": False, "should_run_launch": True},
+            self.node.current_stack,
         )
 
     def test_extract_stack_from_solution(self):
@@ -580,6 +586,7 @@ class TestMutoComposer(unittest.TestCase):
         self.node.pipeline_execute.assert_called_once_with(
             self.node.method,
             {"should_run_provision": True, "should_run_launch": True},
+            self.node.current_stack,
         )
 
     def test_merge(self):
@@ -605,9 +612,9 @@ class TestMutoComposer(unittest.TestCase):
     def test_pipeline_execute_valid(self):
         test_pipeline = MagicMock()
         self.node.pipelines = {"test_pipeline": test_pipeline}
-        self.node.pipeline_execute("test_pipeline", {"key": "value"})
+        self.node.pipeline_execute("test_pipeline", {"key": "value"}, None)
         test_pipeline.execute_pipeline.assert_called_once_with(
-            additional_context={"key": "value"}
+            additional_context={"key": "value"}, next_manifest=None
         )
 
     @patch.object(MutoComposer, "get_logger")
