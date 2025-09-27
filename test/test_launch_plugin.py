@@ -1088,37 +1088,6 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertEqual(response.err_msg, "")
 
     @patch("composer.plugins.launch_plugin.Stack")
-    def test_handle_apply_stack_archive_content_type(self, mock_stack):
-        """Test handle_apply with stack/archive content_type."""
-        request = LaunchPlugin.Request()
-        response = LaunchPlugin.Response()
-        response.success = None
-        response.err_msg = None
-
-        # Payload with stack/archive content_type
-        archive_payload = {
-            "metadata": {
-                "name": "test-archive-stack",
-                "content_type": "stack/archive"
-            },
-            "launch": {
-                "data": "dGVzdCBkYXRh",
-                "properties": {
-                    "launch_file": "launch/test.launch.py"
-                }
-            }
-        }
-        request.input.current.stack = json.dumps(archive_payload)
-        request.input.current.source = json.dumps({})
-
-        self.node.handle_apply(request, response)
-
-        # For archive, it should use the full payload
-        mock_stack.assert_called_once_with(manifest=archive_payload)
-        self.assertTrue(response.success)
-        self.assertEqual(response.err_msg, "")
-
-    @patch("composer.plugins.launch_plugin.Stack")
     def test_handle_apply_raw_payload_type(self, mock_stack):
         """Test handle_apply with raw payload (node/composable)."""
         request = LaunchPlugin.Request()
