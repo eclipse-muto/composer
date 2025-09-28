@@ -30,7 +30,7 @@ from rclpy.node import Node
 from muto_msgs.msg import StackManifest
 from muto_msgs.srv import ProvisionPlugin
 
-WORKSPACES_PATH = os.path.join("/var", "tmp", "muto_workspaces")
+WORKSPACES_PATH = os.path.join("/tmp", "muto", "muto_workspaces")
 ARTIFACT_STATE_FILE = ".muto_artifact.json"
 from composer.utils.stack_parser import StackParser
 

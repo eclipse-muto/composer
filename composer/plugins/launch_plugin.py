@@ -578,18 +578,31 @@ class MutoDefaultLaunchPlugin(Node):
         """Launch the given launch file in a subprocess using ros2 launch."""
         self._terminate_launch_process()
 
-        command = ["ros2", "launch", launch_file]
-        command.extend(self.launch_arguments)
+        # Create a shell script to source the environment if needed
+        # and launch with the additional launch arguments
+        launchCommand = ["ros2", "launch", launch_file]
+        launchCommand.extend(self.launch_arguments)
+        
+        workingDir = os.path.dirname(os.path.dirname(launch_file))
+        script_path = os.path.join(workingDir, "launch_script.sh")
+        script_content = f"#!/bin/bash\nsource {workingDir}/install/setup.bash\nexec \"$@\""
+        with open(script_path, "w") as script_file:
+            script_file.write(script_content)
+        os.chmod(script_path, 0o755)
+        
+        # Use the shell script to launch with proper environment sourcing
+        command = [script_path] + launchCommand
+
         env = os.environ.copy()
         self.get_logger().info(f"Launch PATH: {env.get('PATH', '')}")
         self.get_logger().info(
-            f"Starting launch process in {os.path.dirname(launch_file)}: {' '.join(command)}"
+            f"Starting launch process in {workingDir}: {' '.join(command)}"
         )
         try:
             self.launch_process = subprocess.Popen(
                 command,
                 env=env,
-                cwd=os.path.dirname(launch_file) or None,
+                cwd=workingDir or None,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,

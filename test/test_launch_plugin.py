@@ -179,7 +179,7 @@ class TestLaunchPlugin(unittest.TestCase):
             stdout=-1,
             shell=True,
             executable="/bin/bash",
-            cwd="/var/tmp/muto_workspaces/Test_Stack",
+            cwd="/tmp/muto/muto_workspaces/Test_Stack",
             check=True,
             text=True,
         )
@@ -238,6 +238,8 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertEqual(response.err_msg, "Start flag not set in request.")
 
     @patch("composer.plugins.launch_plugin.subprocess.Popen")
+    @patch("os.chmod")
+    @patch("builtins.open", create=True)
     @patch.object(MutoDefaultLaunchPlugin, "find_file")
     @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
@@ -246,6 +248,8 @@ class TestLaunchPlugin(unittest.TestCase):
         mock_launch_plugin,
         mock_source_workspace,
         mock_find_file,
+        mock_open,
+        mock_chmod,
         mock_popen,
     ):
         response = mock_launch_plugin.response
@@ -522,7 +526,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.node.handle_kill(request, response)
 
         mock_find_file.assert_called_once_with(
-            "/var/tmp/muto_workspaces/test_stack", "kill_script.sh"
+            "/tmp/muto/muto_workspaces/test_stack", "kill_script.sh"
         )
         mock_run_script.assert_called_once_with(mock_find_file())
 

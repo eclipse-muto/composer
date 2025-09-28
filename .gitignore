@@ -1,7 +1,11 @@
-.vscode
-*.pyc
 __pycache__
-tmp
+*.pyc
 build
 install
 log
+.pytest_cache
+.vscode
+.DS_Store
+.idea
+*.swp
+.devcontainer

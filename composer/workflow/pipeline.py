@@ -138,7 +138,7 @@ class Pipeline:
                         response = type("Response", (), {"success": False, "err_msg": "No response from service."})()
                         self.logger.error(f"Step {step_name} failed due to no response.")
                     # Store the response in context regardless of success or failure
-                    self.context[step_name] = response  
+                    self.context[step_name] = type("Response", (), { "success": response.success, "err_msg": response.err_msg })()
 
                     if not response.success:
                         raise Exception(f"Step execution error: {response.err_msg}")
