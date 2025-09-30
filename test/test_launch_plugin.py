@@ -996,7 +996,7 @@ class TestLaunchPlugin(unittest.TestCase):
         request.input.current.source = json.dumps({})
 
         # Mock the payload parsing to return stack/json type
-        mock_get_payload.return_value = ("stack/json", {"node": [{"name": "test_node"}]}, None, None)
+        mock_get_payload.return_value = ("stack/json", stack_data, None, None)
 
         self.node.handle_apply(request, response)
 
@@ -1320,6 +1320,145 @@ class TestLaunchPlugin(unittest.TestCase):
         mock_stack.assert_called_once_with(manifest=unknown_payload)
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch("composer.plugins.launch_plugin.Stack")
+    def test_handle_start_complete_stack_json_flow_regression(self, mock_stack_class):
+        """
+        Regression test for complete stack/json flow including talker-listener-json.json.
+        This test ensures the complete pipeline works end-to-end without mocking internal methods.
+        """
+        # Mock the Stack class and its instances
+        mock_stack_instance = MagicMock()
+        mock_stack_class.return_value = mock_stack_instance
+        
+        # Create proper request and response objects
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        response.success = None
+        response.err_msg = None
+        
+        # Use the exact structure from docs/samples/talker-listener/talker-listener-json.json
+        stack_data = {
+            "metadata": {
+                "name": "Muto Simple Talker-Listener Stack",
+                "description": "A simple talker-listener stack example using demo_nodes_cpp package.",
+                "content_type": "stack/json"
+            },
+            "launch": {
+                "node": [
+                    {
+                        "name": "talker",
+                        "pkg": "demo_nodes_cpp",
+                        "exec": "talker"
+                    },
+                    {
+                        "name": "listener",
+                        "pkg": "demo_nodes_cpp",
+                        "exec": "listener"
+                    }
+                ]
+            }
+        }
+        request.input.current.stack = json.dumps(stack_data)
+        request.input.current.source = json.dumps({})
+        
+        # Mock source_workspaces to avoid file system operations
+        with patch.object(self.node, 'source_workspaces'):
+            self.node.handle_start(request, response)
+        
+        # Verify the Stack was created with the correct manifest (just the launch content)
+        expected_manifest = {
+            "node": [
+                {
+                    "name": "talker",
+                    "pkg": "demo_nodes_cpp",
+                    "exec": "talker"
+                },
+                {
+                    "name": "listener",
+                    "pkg": "demo_nodes_cpp",
+                    "exec": "listener"
+                }
+            ]
+        }
+        mock_stack_class.assert_called_once_with(manifest=expected_manifest)
+        
+        # Verify the stack.launch() method was called
+        mock_stack_instance.launch.assert_called_once_with(self.node.launcher)
+        
+        # Verify success response
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch("composer.plugins.launch_plugin.Stack")
+    def test_handle_start_stack_json_missing_launch_section(self, mock_stack_class):
+        """
+        Test that stack/json without launch section fails gracefully.
+        """
+        request = MagicMock()
+        request.start = True
+        response = MagicMock()
+        response.success = None
+        response.err_msg = None
+        
+        # Stack data without launch section
+        stack_data = {
+            "metadata": {
+                "name": "Invalid Stack",
+                "content_type": "stack/json"
+            }
+            # Missing launch section
+        }
+        request.input.current.stack = json.dumps(stack_data)
+        request.input.current.source = json.dumps({})
+        
+        with patch.object(self.node, 'source_workspaces'):
+            self.node.handle_start(request, response)
+        
+        # Verify Stack was not created
+        mock_stack_class.assert_not_called()
+        
+        # Verify failure response
+        self.assertFalse(response.success)
+        self.assertEqual(response.err_msg, "No valid launch method found for the stack payload.")
+
+    @patch("composer.plugins.launch_plugin.Stack")  
+    def test_handle_apply_complete_stack_json_flow_regression(self, mock_stack_class):
+        """
+        Regression test for complete stack/json apply flow.
+        """
+        # Mock the Stack class and its instances
+        mock_stack_instance = MagicMock()
+        mock_stack_class.return_value = mock_stack_instance
+        
+        request = MagicMock()
+        response = MagicMock()
+        response.success = None
+        response.err_msg = None
+        
+        # Use stack/json structure
+        stack_data = {
+            "metadata": {
+                "name": "Test Apply Stack",
+                "content_type": "stack/json"
+            },
+            "launch": {
+                "node": [
+                    {"name": "test_node", "pkg": "test_pkg", "exec": "test_exec"}
+                ]
+            }
+        }
+        request.input.current.stack = json.dumps(stack_data)
+        
+        self.node.handle_apply(request, response)
+        
+        # For apply, the launch portion of stack_data should be passed to Stack constructor
+        mock_stack_class.assert_called_once_with(manifest=stack_data["launch"])
+        mock_stack_instance.apply.assert_called_once_with(self.node.launcher)
+        
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 

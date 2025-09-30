@@ -171,9 +171,13 @@ class MutoDefaultLaunchPlugin(Node):
         """Handle start for stack/json payload type."""
         if manifest:
             stack_data = manifest.get("launch")
-            stack = Stack(manifest=stack_data)
-            stack.launch(self.launcher)
-            return True
+            if stack_data:
+                stack = Stack(manifest=stack_data)
+                stack.launch(self.launcher)
+                return True
+            else:
+                self.get_logger().error("No 'launch' section found in stack/json manifest")
+                return False
         return False
 
     def _handle_raw_stack_start(self, stack_data):
@@ -541,24 +545,21 @@ class MutoDefaultLaunchPlugin(Node):
             if self.current_stack:
                 # Parse payload and determine type
                 payload_type, stack_data, launch_file, command = self._get_payload_type_and_data(self.current_stack)
-                
-                stack_dict = None
-                if payload_type == "stack/json":
-                    stack_dict = stack_data
-                elif payload_type == "raw":
-                    stack_dict = stack_data
-                elif payload_type == "stack/archive":
-                    # For archive, we might need to apply the full payload or just the properties
-                    stack_dict = self.current_stack
-                else:
-                    stack_dict = self.current_stack  # fallback
+                stack_dict = stack_data if isinstance(stack_data, dict) else None
                 
                 if stack_dict:
-                    self.get_logger().info(
-                        f"Apply requested with stack manifest keys: {list(stack_dict.keys())}"
-                    )
-                    stack = Stack(manifest=stack_dict)
-                    stack.apply(self.launcher)
+                    if payload_type == "raw":
+                        stack = Stack(stack_dict)
+                        stack.apply(self.launcher)
+                    elif payload_type == "stack/json":
+                        success = self._handle_stack_json_start(stack_dict)
+                    elif payload_type == "stack/archive":
+                        success = self._handle_archive_start(launch_file)
+                    else:
+                        # Fallback case
+                        stack = Stack(manifest=stack_dict)
+                        stack.apply(self.launcher)
+                    
                     response.success = True
                     response.err_msg = ""
                 else:
