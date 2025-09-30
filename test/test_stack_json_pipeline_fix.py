@@ -2,14 +2,16 @@
 """
 Unit test for stack/json pipeline launch issue regression.
 
-Tests the fix for the bug where stack/json content from docs/samples/talker-listener/talker-listener-json.json
-would not launch properly through the pipeline due to incorrect name extraction in Pipeline.toStackManifest().
+Tests the fix for the bug where stack/json content would not launch properly 
+through the pipeline due to incorrect name extraction in Pipeline.toStackManifest().
 
 Bug Details:
 - Original Issue: Pipeline.toStackManifest() expected 'name' at root level
 - Stack Format: stack/json has 'metadata.name' structure  
 - Fix: Updated toStackManifest() to check metadata.name first, fallback to root name
 - Result: Stack manifest correctly flows through compose → launch pipeline services
+
+Test data is embedded directly in the test to avoid file dependencies.
 """
 
 import unittest
@@ -28,9 +30,28 @@ class TestStackJsonPipelineFix(unittest.TestCase):
         rclpy.init()
         cls.node = Node('test_stack_json_pipeline')
         
-        # Load test stack
-        with open('/home/ws/docs/samples/talker-listener/talker-listener-json.json', 'r') as f:
-            cls.stack_data = json.load(f)
+        # Embedded test stack data (instead of reading from file)
+        cls.stack_data = {
+            "metadata": {
+                "name": "Muto Simple Talker-Listener Stack",
+                "description": "A simple talker-listener stack example using demo_nodes_cpp package.",
+                "content_type": "stack/json"
+            },
+            "launch": {
+                "node": [
+                    {
+                        "name": "talker",
+                        "pkg": "demo_nodes_cpp",
+                        "exec": "talker"
+                    },
+                    {
+                        "name": "listener",
+                        "pkg": "demo_nodes_cpp",
+                        "exec": "listener"
+                    }
+                ]
+            }
+        }
     
     @classmethod 
     def tearDownClass(cls):

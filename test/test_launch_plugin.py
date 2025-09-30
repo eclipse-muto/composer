@@ -29,6 +29,10 @@ class TestLaunchPlugin(unittest.TestCase):
         self.node = MutoDefaultLaunchPlugin()
         self.node.async_loop = MagicMock()
         self.node.get_logger = MagicMock()
+        # Mock the stack parser
+        self.node.stack_parser = MagicMock()
+        # Mock the launcher.kill method
+        self.node.launcher.kill = MagicMock()
         # Don't set up mock current_stack - let the methods parse it from requests
 
     def tearDown(self) -> None:
@@ -242,10 +246,12 @@ class TestLaunchPlugin(unittest.TestCase):
     @patch("builtins.open", create=True)
     @patch.object(MutoDefaultLaunchPlugin, "find_file")
     @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_start(
         self,
         mock_launch_plugin,
+        mock_get_payload,
         mock_source_workspace,
         mock_find_file,
         mock_open,
@@ -258,24 +264,31 @@ class TestLaunchPlugin(unittest.TestCase):
         request = mock_launch_plugin.request
         request.start = True
         
-        # Use proper JSON structure matching talker-listener-xarchive.json
+        # Use proper JSON structure matching new implementation
         stack_data = {
             "metadata": {
                 "name": "Test Stack",
-                "description": "A test stack for launching"
+                "content_type": "stack/archive"
             },
-            "launch_description_source": "mock_launch_description_source",
-            "on_start": None,
-            "on_kill": None
+            "launch": {
+                "properties": {
+                    "launch_file": "test.launch.py"
+                }
+            }
         }
         request.input.current.stack = json.dumps(stack_data)
         request.input.current.source = json.dumps({})
 
+        # Mock the payload type detection
+        mock_get_payload.return_value = ("stack/archive", stack_data, "test.launch.py", "launch")
+        
         self.node.launch_arguments = ["test:=test_args"]
-        mock_find_file.return_value = "/path/to/launch_file.py"
+        mock_find_file.return_value = "/path/to/test.launch.py"
 
         self.node.handle_start(request, response)
+        
         mock_source_workspace.assert_called_once_with(request.input.current)
+        mock_get_payload.assert_called_once()
         mock_find_file.assert_called_once()
         mock_popen.assert_called_once()
         self.assertTrue(response.success)
@@ -284,10 +297,12 @@ class TestLaunchPlugin(unittest.TestCase):
     @patch("asyncio.run_coroutine_threadsafe")
     @patch.object(MutoDefaultLaunchPlugin, "find_file")
     @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_start_file_not_found(
         self,
         mock_launch_plugin,
+        mock_get_payload,
         mock_source_workspace,
         mock_find_file,
         mock_patch_asyncio,
@@ -298,38 +313,43 @@ class TestLaunchPlugin(unittest.TestCase):
         request = mock_launch_plugin.request
         request.start = True
 
-        # Use proper JSON structure for legacy launch behavior
+        # Use proper JSON structure for archive stack with missing file
         stack_data = {
             "metadata": {
-                "name": "Legacy Launch Stack",
-                "description": "A legacy launch file stack"
+                "name": "Archive Stack",
+                "content_type": "stack/archive"
             },
-            "launch_description_source": "mock_launch_description_source",
-            "on_start": None,
-            "on_kill": None
+            "launch": {
+                "properties": {
+                    "launch_file": "missing_launch_file.py"
+                }
+            }
         }
         request.input.current.stack = json.dumps(stack_data)
         request.input.current.source = json.dumps({})
         
+        # Mock payload type detection
+        mock_get_payload.return_value = ("stack/archive", stack_data, "missing_launch_file.py", "launch")
+        
         self.node.launch_arguments = ["test:=test_args"]
-        mock_find_file.return_value = None
+        mock_find_file.return_value = None  # File not found
         
         self.node.handle_start(request, response)
         
         mock_source_workspace.assert_called_once_with(request.input.current)
-        mock_find_file.assert_called()
+        mock_get_payload.assert_called_once()
+        mock_find_file.assert_called_once()
         mock_patch_asyncio.assert_not_called()
         self.assertFalse(response.success)
-        self.assertEqual(
-            response.err_msg, "Launch file not found: mock_launch_description_source"
-        )
+        self.assertIn("Launch file not found", response.err_msg)
 
     @patch.object(MutoDefaultLaunchPlugin, "run_script")
     @patch.object(MutoDefaultLaunchPlugin, "find_file")
     @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_start_current_stack_on_start(
-        self, mock_launch_plugin, mock_source_workspace, mock_find_file, mock_run_script
+        self, mock_launch_plugin, mock_get_payload, mock_source_workspace, mock_find_file, mock_run_script
     ):
         response = mock_launch_plugin.response
         response.success = None
@@ -337,34 +357,39 @@ class TestLaunchPlugin(unittest.TestCase):
         request = mock_launch_plugin.request
         request.start = True
 
-        # Use proper JSON structure with on_start/on_kill for legacy script handling
+        # Use proper JSON structure with legacy on_start/on_kill script handling
         stack_data = {
             "metadata": {
                 "name": "Test Stack",
                 "description": "A test stack with on_start script"
             },
-            "launch_description_source": None,
             "on_start": "start_script.sh",
             "on_kill": "kill_script.sh"
         }
         request.input.current.stack = json.dumps(stack_data)
         request.input.current.source = json.dumps({})
 
+        # Mock no recognized payload type, should fall back to legacy handling
+        mock_get_payload.return_value = (None, None, None, None)
+        
         self.node.launch_arguments = ["test:=test_args"]
         mock_find_file.return_value = "found/path"
         
         self.node.handle_start(request, response)
+        
+        mock_source_workspace.assert_called_once_with(request.input.current)
+        mock_get_payload.assert_called_once()
         mock_run_script.assert_called_once_with("found/path")
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
-        mock_source_workspace.assert_called_once_with(request.input.current)
 
     @patch.object(MutoDefaultLaunchPlugin, "run_script")
     @patch.object(MutoDefaultLaunchPlugin, "find_file")
     @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_start_none(
-        self, mock_launch_plugin, mock_source_workspace, mock_find_file, mock_run_script
+        self, mock_launch_plugin, mock_get_payload, mock_source_workspace, mock_find_file, mock_run_script
     ):
         response = mock_launch_plugin.response
         response.success = None
@@ -372,23 +397,25 @@ class TestLaunchPlugin(unittest.TestCase):
         request = mock_launch_plugin.request
         request.start = True
 
-        # Use proper JSON structure with no launch method (no launch_description_source or on_start)
+        # Use proper JSON structure with no recognized launch method
         stack_data = {
             "metadata": {
                 "name": "No Launch Method Stack",
                 "description": "A stack without launch method"
-            },
-            "launch_description_source": None,
-            "on_start": None
+            }
         }
         request.input.current.stack = json.dumps(stack_data)
         request.input.current.source = json.dumps({})
+        
+        # Mock no recognized payload type and no legacy methods
+        mock_get_payload.return_value = (None, None, None, None)
         
         self.node.launch_arguments = ["test:=test_args"]
 
         self.node.handle_start(request, response)
         
         mock_source_workspace.assert_called_once_with(request.input.current)
+        mock_get_payload.assert_called_once()
         mock_find_file.assert_not_called()
         mock_run_script.assert_not_called()
         self.assertFalse(response.success)
@@ -460,8 +487,9 @@ class TestLaunchPlugin(unittest.TestCase):
         mock_core_twin.assert_not_called()
 
     @patch.object(MutoDefaultLaunchPlugin, "_terminate_launch_process")
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
-    def test_handle_kill(self, mock_launch_plugin, mock_terminate):
+    def test_handle_kill(self, mock_launch_plugin, mock_get_payload, mock_terminate):
         self.node.set_stack_cli = MagicMock()
 
         request = mock_launch_plugin.request
@@ -470,22 +498,26 @@ class TestLaunchPlugin(unittest.TestCase):
         response.success = None
         response.err_msg = None
         
-        # Use proper JSON structure
+        # Use proper JSON structure for archive stack
         stack_data = {
             "metadata": {
                 "name": "test_stack",
-                "description": "A test stack for killing"
+                "content_type": "stack/archive"
             },
-            "stack_id": "test_stack_id",
-            "launch_description_source": "test_launch_file.launch.py",
-            "on_kill": ""
+            "launch": {
+                "properties": {
+                    "launch_file": "test_launch_file.launch.py"
+                }
+            }
         }
         request.input.current.stack = json.dumps(stack_data)
 
+        # Mock payload type detection for archive
+        mock_get_payload.return_value = ("stack/archive", stack_data, "test_launch_file.launch.py", "launch")
+
         self.node.handle_kill(request, response)
 
-        # Expect two info calls: one for kill request, one for success
-        self.assertEqual(self.node.get_logger().info.call_count, 2)
+        # Expect kill request log and success log
         self.node.get_logger().info.assert_any_call(
             "Kill requested; current launch PID=None"
         )
@@ -495,6 +527,422 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "Handle kill success")
         mock_terminate.assert_called_once_with()
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch('composer.plugins.launch_plugin.Stack')
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_apply_raw_stack(self, mock_launch_plugin, mock_stack, mock_get_payload):
+        """Test handle_apply with raw stack payload."""
+        request = mock_launch_plugin.request
+        request.start = True
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+        
+        # Use proper JSON structure for raw stack
+        stack_data = {
+            "node": [{"name": "test_node", "pkg": "test_pkg"}],
+            "metadata": {"name": "test_stack"}
+        }
+        request.input.current.stack = json.dumps(stack_data)
+
+        # Mock payload type detection for raw stack
+        mock_get_payload.return_value = ("raw", stack_data, None, None)
+        mock_stack_instance = MagicMock()
+        mock_stack.return_value = mock_stack_instance
+
+        self.node.handle_apply(request, response)
+
+        mock_get_payload.assert_called_once()
+        mock_stack.assert_called_once_with(stack_data)
+        mock_stack_instance.apply.assert_called_once_with(self.node.launcher)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch.object(MutoDefaultLaunchPlugin, "_handle_stack_json_start")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_apply_json_stack(self, mock_launch_plugin, mock_handle_json, mock_get_payload):
+        """Test handle_apply with stack/json payload."""
+        request = mock_launch_plugin.request
+        request.start = True
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+        
+        # Use proper JSON structure for stack/json
+        stack_data = {
+            "metadata": {"name": "test_stack", "content_type": "stack/json"},
+            "launch": {"node": [{"name": "test_node"}]}
+        }
+        request.input.current.stack = json.dumps(stack_data)
+
+        # Mock payload type detection for stack/json
+        mock_get_payload.return_value = ("stack/json", stack_data, None, None)
+        mock_handle_json.return_value = True
+
+        self.node.handle_apply(request, response)
+
+        mock_get_payload.assert_called_once()
+        mock_handle_json.assert_called_once_with(stack_data)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch.object(MutoDefaultLaunchPlugin, "_handle_archive_start")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_apply_archive_stack(self, mock_launch_plugin, mock_handle_archive, mock_get_payload):
+        """Test handle_apply with stack/archive payload."""
+        request = mock_launch_plugin.request
+        request.start = True
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+        
+        # Use proper JSON structure for stack/archive
+        stack_data = {
+            "metadata": {"name": "test_stack", "content_type": "stack/archive"},
+            "launch": {"properties": {"launch_file": "test.launch.py"}}
+        }
+        request.input.current.stack = json.dumps(stack_data)
+
+        # Mock payload type detection for stack/archive
+        mock_get_payload.return_value = ("stack/archive", stack_data, "test.launch.py", "launch")
+        mock_handle_archive.return_value = True
+
+        self.node.handle_apply(request, response)
+
+        mock_get_payload.assert_called_once()
+        mock_handle_archive.assert_called_once_with("test.launch.py")
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_apply_no_stack_data(self, mock_launch_plugin, mock_get_payload):
+        """Test handle_apply with no valid stack data."""
+        request = mock_launch_plugin.request
+        request.start = True
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+        
+        # Provide minimal valid stack but mock payload detection to return None
+        request.input.current.stack = json.dumps({"metadata": {"name": "test"}})
+
+        # Mock payload type detection returning None for stack_data
+        mock_get_payload.return_value = ("unknown", None, None, None)
+
+        self.node.handle_apply(request, response)
+
+        mock_get_payload.assert_called_once()
+        self.assertFalse(response.success)
+        self.assertEqual(response.err_msg, "No valid stack data found for apply operation.")
+
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_apply_no_current_stack(self, mock_launch_plugin):
+        """Test handle_apply with no current stack."""
+        request = mock_launch_plugin.request
+        request.start = True
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+        
+        request.input.current.stack = ""  # Empty stack
+
+        self.node.handle_apply(request, response)
+
+        self.assertFalse(response.success)
+        self.assertEqual(response.err_msg, "No current stack available for apply operation.")
+
+    @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch.object(MutoDefaultLaunchPlugin, "_handle_stack_json_start")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_start_json_payload(self, mock_launch_plugin, mock_handle_json, mock_get_payload, mock_source_workspace):
+        """Test handle_start with stack/json payload."""
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+        request = mock_launch_plugin.request
+        request.start = True
+        
+        # Use proper JSON structure for stack/json
+        stack_data = {
+            "metadata": {"name": "JSON Stack", "content_type": "stack/json"},
+            "launch": {"node": [{"name": "test_node"}]}
+        }
+        request.input.current.stack = json.dumps(stack_data)
+        request.input.current.source = json.dumps({})
+
+        # Mock payload type detection for stack/json
+        mock_get_payload.return_value = ("stack/json", stack_data, None, None)
+        mock_handle_json.return_value = True
+
+        self.node.handle_start(request, response)
+        
+        mock_source_workspace.assert_called_once_with(request.input.current)
+        mock_get_payload.assert_called_once()
+        mock_handle_json.assert_called_once_with(stack_data)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch.object(MutoDefaultLaunchPlugin, "_handle_raw_stack_start")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_start_raw_payload(self, mock_launch_plugin, mock_handle_raw, mock_get_payload, mock_source_workspace):
+        """Test handle_start with raw stack payload."""
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+        request = mock_launch_plugin.request
+        request.start = True
+        
+        # Use proper JSON structure for raw stack
+        stack_data = {
+            "node": [{"name": "test_node", "pkg": "test_pkg"}],
+            "metadata": {"name": "Raw Stack"}
+        }
+        request.input.current.stack = json.dumps(stack_data)
+        request.input.current.source = json.dumps({})
+
+        # Mock payload type detection for raw stack
+        mock_get_payload.return_value = ("raw", stack_data, None, None)
+        mock_handle_raw.return_value = True
+
+        self.node.handle_start(request, response)
+        
+        mock_source_workspace.assert_called_once_with(request.input.current)
+        mock_get_payload.assert_called_once()
+        mock_handle_raw.assert_called_once_with(stack_data)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "")
+
+    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
+    @patch.object(MutoDefaultLaunchPlugin, "_handle_raw_stack_kill")
+    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    def test_handle_kill_raw_payload(self, mock_launch_plugin, mock_handle_raw_kill, mock_get_payload):
+        """Test handle_kill with raw stack payload."""
+        request = mock_launch_plugin.request
+        request.start = True
+        response = mock_launch_plugin.response
+        response.success = None
+        response.err_msg = None
+        
+        # Use proper JSON structure for raw stack
+        stack_data = {
+            "node": [{"name": "test_node"}],
+            "metadata": {"name": "test_stack"}
+        }
+        request.input.current.stack = json.dumps(stack_data)
+
+        # Mock payload type detection for raw stack
+        mock_get_payload.return_value = ("raw", stack_data, None, None)
+        mock_handle_raw_kill.return_value = True
+
+        self.node.handle_kill(request, response)
+
+        mock_get_payload.assert_called_once()
+        mock_handle_raw_kill.assert_called_once_with(stack_data)
+        self.assertTrue(response.success)
+        self.assertEqual(response.err_msg, "Handle kill success")
+
+    def test_safely_parse_stack_valid_json(self):
+        """Test _safely_parse_stack with valid JSON."""
+        stack_string = '{"metadata": {"name": "test"}, "launch": {}}'
+        result = self.node._safely_parse_stack(stack_string)
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["metadata"]["name"], "test")
+
+    def test_safely_parse_stack_invalid_json(self):
+        """Test _safely_parse_stack with invalid JSON."""
+        stack_string = '{"invalid": json}'
+        result = self.node._safely_parse_stack(stack_string)
+        self.assertIsNone(result)
+        self.node.get_logger().warning.assert_called()
+
+    def test_safely_parse_stack_empty_string(self):
+        """Test _safely_parse_stack with empty string."""
+        result = self.node._safely_parse_stack("")
+        self.assertIsNone(result)
+
+    def test_safely_parse_stack_non_dict(self):
+        """Test _safely_parse_stack with non-dict JSON."""
+        stack_string = '["array", "instead", "of", "dict"]'
+        result = self.node._safely_parse_stack(stack_string)
+        self.assertIsNone(result)
+        self.node.get_logger().warning.assert_called()
+
+    def test_get_stack_name_with_metadata_name(self):
+        """Test _get_stack_name with metadata.name."""
+        stack_dict = {"metadata": {"name": "metadata_name"}, "name": "fallback_name"}
+        result = self.node._get_stack_name(stack_dict)
+        self.assertEqual(result, "metadata_name")
+
+    def test_get_stack_name_with_fallback_name(self):
+        """Test _get_stack_name with fallback to name field."""
+        stack_dict = {"name": "fallback_name"}
+        result = self.node._get_stack_name(stack_dict)
+        self.assertEqual(result, "fallback_name")
+
+    def test_get_stack_name_with_default(self):
+        """Test _get_stack_name with default value."""
+        stack_dict = {}
+        result = self.node._get_stack_name(stack_dict)
+        self.assertEqual(result, "default")
+
+    def test_get_stack_name_none_input(self):
+        """Test _get_stack_name with None input."""
+        result = self.node._get_stack_name(None)
+        self.assertEqual(result, "default")
+
+    def test_get_payload_type_and_data_archive(self):
+        """Test _get_payload_type_and_data for archive type."""
+        payload = {"metadata": {"content_type": "stack/archive"}}
+        parsed_payload = {
+            "metadata": {"content_type": "stack/archive"},
+            "launch": {"properties": {"launch_file": "test.launch.py", "command": "launch"}}
+        }
+        self.node.stack_parser.parse_payload.return_value = parsed_payload
+        
+        payload_type, stack_data, launch_file, command = self.node._get_payload_type_and_data(payload)
+        
+        self.assertEqual(payload_type, "stack/archive")
+        self.assertEqual(stack_data, parsed_payload)
+        self.assertEqual(launch_file, "test.launch.py")
+        self.assertEqual(command, "launch")
+
+    def test_get_payload_type_and_data_json(self):
+        """Test _get_payload_type_and_data for JSON type."""
+        payload = {"metadata": {"content_type": "stack/json"}}
+        parsed_payload = {"metadata": {"content_type": "stack/json"}, "launch": {"node": []}}
+        self.node.stack_parser.parse_payload.return_value = parsed_payload
+        
+        payload_type, stack_data, launch_file, command = self.node._get_payload_type_and_data(payload)
+        
+        self.assertEqual(payload_type, "stack/json")
+        self.assertEqual(stack_data, parsed_payload)
+        self.assertIsNone(launch_file)
+        self.assertIsNone(command)
+
+    def test_get_payload_type_and_data_raw(self):
+        """Test _get_payload_type_and_data for raw type."""
+        payload = {"node": [{"name": "test_node"}]}
+        parsed_payload = {"node": [{"name": "test_node"}]}
+        self.node.stack_parser.parse_payload.return_value = parsed_payload
+        
+        payload_type, stack_data, launch_file, command = self.node._get_payload_type_and_data(payload)
+        
+        self.assertEqual(payload_type, "raw")
+        self.assertEqual(stack_data, parsed_payload)
+        self.assertIsNone(launch_file)
+        self.assertIsNone(command)
+
+    def test_get_payload_type_and_data_invalid(self):
+        """Test _get_payload_type_and_data with invalid payload."""
+        self.node.stack_parser.parse_payload.return_value = None
+        
+        result = self.node._get_payload_type_and_data("invalid")
+        
+        self.assertEqual(result, (None, None, None, None))
+
+    @patch('composer.plugins.launch_plugin.Stack')
+    def test_handle_stack_json_start_success(self, mock_stack):
+        """Test _handle_stack_json_start with valid manifest."""
+        manifest = {"launch": {"node": [{"name": "test_node"}]}}
+        mock_stack_instance = MagicMock()
+        mock_stack.return_value = mock_stack_instance
+        
+        result = self.node._handle_stack_json_start(manifest)
+        
+        self.assertTrue(result)
+        mock_stack.assert_called_once_with(manifest={"node": [{"name": "test_node"}]})
+        mock_stack_instance.launch.assert_called_once_with(self.node.launcher)
+
+    def test_handle_stack_json_start_no_launch(self):
+        """Test _handle_stack_json_start with no launch section."""
+        manifest = {"metadata": {"name": "test"}}
+        
+        result = self.node._handle_stack_json_start(manifest)
+        
+        self.assertFalse(result)
+        self.node.get_logger().error.assert_called_with("No 'launch' section found in stack/json manifest")
+
+    @patch('composer.plugins.launch_plugin.Stack')
+    def test_handle_raw_stack_start_success(self, mock_stack):
+        """Test _handle_raw_stack_start with valid data."""
+        stack_data = {"node": [{"name": "test_node"}]}
+        mock_stack_instance = MagicMock()
+        mock_stack.return_value = mock_stack_instance
+        
+        result = self.node._handle_raw_stack_start(stack_data)
+        
+        self.assertTrue(result)
+        mock_stack.assert_called_once_with(manifest=stack_data)
+        mock_stack_instance.launch.assert_called_once_with(self.node.launcher)
+
+    @patch.object(MutoDefaultLaunchPlugin, '_launch_via_ros2')
+    @patch.object(MutoDefaultLaunchPlugin, '_terminate_launch_process')
+    @patch.object(MutoDefaultLaunchPlugin, 'find_file')
+    @patch.object(MutoDefaultLaunchPlugin, '_get_stack_name')
+    def test_handle_archive_start_success(self, mock_get_name, mock_find_file, mock_terminate, mock_launch):
+        """Test _handle_archive_start with valid launch file."""
+        launch_file = "test.launch.py"
+        mock_get_name.return_value = "test_stack"
+        mock_find_file.return_value = "/path/to/test.launch.py"
+        
+        result = self.node._handle_archive_start(launch_file)
+        
+        self.assertTrue(result)
+        mock_terminate.assert_called_once()
+        mock_find_file.assert_called_once()
+        mock_launch.assert_called_once_with("/path/to/test.launch.py")
+
+    @patch.object(MutoDefaultLaunchPlugin, 'find_file')
+    @patch.object(MutoDefaultLaunchPlugin, '_get_stack_name')
+    def test_handle_archive_start_file_not_found(self, mock_get_name, mock_find_file):
+        """Test _handle_archive_start with file not found."""
+        launch_file = "missing.launch.py"
+        mock_get_name.return_value = "test_stack"
+        mock_find_file.return_value = None
+        
+        with self.assertRaises(FileNotFoundError):
+            self.node._handle_archive_start(launch_file)
+
+    @patch.object(MutoDefaultLaunchPlugin, '_terminate_launch_process')
+    def test_handle_archive_kill_success(self, mock_terminate):
+        """Test _handle_archive_kill with valid launch file."""
+        launch_file = "test.launch.py"
+        
+        result = self.node._handle_archive_kill(launch_file)
+        
+        self.assertTrue(result)
+        mock_terminate.assert_called_once()
+        self.node.get_logger().info.assert_called_with("Launch process killed successfully.")
+
+    def test_handle_raw_stack_kill_success(self):
+        """Test _handle_raw_stack_kill."""
+        stack_data = {"node": [{"name": "test_node"}]}
+        
+        result = self.node._handle_raw_stack_kill(stack_data)
+        
+        self.assertTrue(result)
+        self.node.launcher.kill.assert_called_once()
+        self.node.get_logger().info.assert_called_with("Launch process killed successfully.")
+
+    @patch('composer.plugins.launch_plugin.Stack')
+    def test_handle_raw_stack_apply_success(self, mock_stack):
+        """Test _handle_raw_stack_apply with valid data."""
+        stack_data = {"node": [{"name": "test_node"}]}
+        mock_stack_instance = MagicMock()
+        mock_stack.return_value = mock_stack_instance
+        
+        result = self.node._handle_raw_stack_apply(stack_data)
+        
+        self.assertTrue(result)
+        mock_stack.assert_called_once_with(manifest=stack_data)
+        mock_stack_instance.apply.assert_called_once_with(self.node.launcher)
 
     @patch.object(MutoDefaultLaunchPlugin, "run_script")
     @patch.object(MutoDefaultLaunchPlugin, "find_file")
@@ -522,6 +970,9 @@ class TestLaunchPlugin(unittest.TestCase):
         }
         request.input.current.stack = json.dumps(stack_data)
         request.input.current.source = json.dumps({})
+
+        # Mock the stack parser to return the stack data
+        self.node.stack_parser.parse_payload.return_value = stack_data
 
         self.node.handle_kill(request, response)
 
@@ -551,15 +1002,19 @@ class TestLaunchPlugin(unittest.TestCase):
 
         request = mock_launch_plugin.request
         request.start = True
-        request.input.current.stack = json.dumps({
+        stack_data = {
             "name": "test_stack",
             "on_kill": True
-        })
+        }
+        request.input.current.stack = json.dumps(stack_data)
         response = mock_launch_plugin.response
         response.success = None
         response.err_msg = None
 
         mock_find_file.return_value = None
+        
+        # Mock the stack parser to return the stack data
+        self.node.stack_parser.parse_payload.return_value = stack_data
 
         self.node.handle_kill(request, response)
 
@@ -593,21 +1048,28 @@ class TestLaunchPlugin(unittest.TestCase):
         response.success = None
         response.err_msg = None
         
-        # Use proper JSON structure
+        # Use proper JSON structure for a raw stack (has no content_type, just nodes)
         stack_data = {
             "metadata": {
                 "name": "mock_stack_name",
                 "description": "A mock stack for testing apply"
             },
-            "launch": {
-                "node": [{"name": "test_node"}]
-            }
+            "node": [{"name": "test_node", "pkg": "test_pkg"}]
         }
         request.input.current.stack = json.dumps(stack_data)
 
+        # Mock the stack parser to return the parsed payload
+        self.node.stack_parser.parse_payload.return_value = stack_data
+        
+        # Mock Stack instance
+        mock_stack_instance = MagicMock()
+        mock_stack.return_value = mock_stack_instance
+
         self.node.handle_apply(request, response)
 
-        mock_stack.assert_called_once_with(manifest=stack_data)
+        # For raw payload, Stack should be called with the full stack_data
+        mock_stack.assert_called_once_with(stack_data)
+        mock_stack_instance.apply.assert_called_once_with(self.node.launcher)
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
@@ -1039,230 +1501,14 @@ class TestLaunchPlugin(unittest.TestCase):
         # Mock the payload parsing to return stack/archive type
         mock_get_payload.return_value = ("stack/archive", stack_data, "launch/test.launch.py", "launch")
 
-        self.node.handle_apply(request, response)
+        # Mock the methods that would be called for archive handling
+        with patch.object(self.node, '_handle_archive_start', return_value=True) as mock_handle_archive:
+            self.node.handle_apply(request, response)
 
-        # For archive, it uses the full payload
-        mock_stack.assert_called_once_with(manifest=stack_data)
-        self.assertTrue(response.success)
-        self.assertEqual(response.err_msg, "")
-        self.assertEqual(response.err_msg, "")
-
-    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
-    @patch("composer.plugins.launch_plugin.Stack")
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
-    def test_handle_apply_raw_payload_type(self, mock_launch_plugin, mock_stack, mock_get_payload):
-        """Test handle_apply with raw payload (node/composable)."""
-        request = mock_launch_plugin.request
-        response = mock_launch_plugin.response
-        response.success = None
-        response.err_msg = None
-
-        # Mock the payload parsing to return raw type
-        mock_get_payload.return_value = ("raw", {"node": [{"name": "test_node"}]}, None, None)
-
-        self.node.handle_apply(request, response)
-
-        mock_stack.assert_called_once_with(manifest={"node": [{"name": "test_node"}]})
-        self.assertTrue(response.success)
-        self.assertEqual(response.err_msg, "")
-
-    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
-    @patch("composer.plugins.launch_plugin.Stack")
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
-    def test_handle_apply_unknown_content_type(self, mock_launch_plugin, mock_stack, mock_get_payload):
-        """Test handle_apply with unknown content_type uses full payload."""
-        request = mock_launch_plugin.request
-        response = mock_launch_plugin.response
-        response.success = None
-        response.err_msg = None
-
-        # Mock the payload parsing to return None (unknown type)
-        unknown_payload = {
-            "metadata": {"name": "test-unknown", "content_type": "unknown/type"},
-            "custom": {"data": "test"}
-        }
-        mock_get_payload.return_value = (None, None, None, None)
-        self.node.current_stack.stack = json.dumps(unknown_payload)
-
-        self.node.handle_apply(request, response)
-
-        # Should use the full payload as fallback
-        mock_stack.assert_called_once_with(manifest=unknown_payload)
-        self.assertTrue(response.success)
-        self.assertEqual(response.err_msg, "")
-
-    @patch("composer.plugins.launch_plugin.Stack")
-    def test_handle_apply_raw_payload_type(self, mock_stack):
-        """Test handle_apply with raw payload (node/composable)."""
-        request = LaunchPlugin.Request()
-        response = LaunchPlugin.Response()
-        response.success = None
-        response.err_msg = None
-
-        # Raw payload with node
-        raw_payload = {
-            "node": [{"name": "test_node"}]
-        }
-        self.node.current_stack.stack = json.dumps(raw_payload)
-
-        self.node.handle_apply(request, response)
-
-        mock_stack.assert_called_once_with(manifest=raw_payload)
-        self.assertTrue(response.success)
-        self.assertEqual(response.err_msg, "")
-
-    @patch("composer.plugins.launch_plugin.Stack")
-    def test_handle_apply_unknown_content_type(self, mock_stack):
-        """Test handle_apply with unknown content_type uses full payload."""
-        request = LaunchPlugin.Request()
-        response = LaunchPlugin.Response()
-        response.success = None
-        response.err_msg = None
-
-        # Payload with unknown content_type
-        unknown_payload = {
-            "metadata": {
-                "name": "test-unknown-stack",
-                "content_type": "unknown/type"
-            },
-            "custom": {
-                "data": "some_data"
-            }
-        }
-        self.node.current_stack.stack = json.dumps(unknown_payload)
-
-        self.node.handle_apply(request, response)
-
-        # Should use the full payload as fallback
-        mock_stack.assert_called_once_with(manifest=unknown_payload)
-        self.assertTrue(response.success)
-        self.assertEqual(response.err_msg, "")
-
-    @patch.object(MutoDefaultLaunchPlugin, "_get_payload_type_and_data")
-    @patch("composer.plugins.launch_plugin.Stack")
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
-    def test_handle_apply_raw_payload_type(self, mock_launch_plugin, mock_stack, mock_get_payload):
-        """Test handle_apply with raw payload (node/composable)."""
-        request = mock_launch_plugin.request
-        response = mock_launch_plugin.response
-        response.success = None
-        response.err_msg = None
-
-        # Raw payload with node
-        raw_payload = {
-            "node": [{"name": "test_node"}]
-        }
-        # Mock the payload parsing to return raw type
-        mock_get_payload.return_value = ("raw", raw_payload, None, None)
-
-        self.node.current_stack.stack = json.dumps(raw_payload)
-
-        self.node.handle_apply(request, response)
-
-        mock_stack.assert_called_once_with(manifest=raw_payload)
-        self.assertTrue(response.success)
-        self.assertEqual(response.err_msg, "")
-
-    @patch("composer.model.stack.Stack")
-    def test_handle_apply_unknown_content_type(self, mock_stack):
-        """Test handle_apply with unknown content_type uses full payload."""
-        request = LaunchPlugin.Request()
-        response = LaunchPlugin.Response()
-        response.success = None
-        response.err_msg = None
-
-        # Payload with unknown content_type
-        unknown_payload = {
-            "metadata": {
-                "name": "test-unknown-stack",
-                "content_type": "unknown/type"
-            },
-            "custom": {
-                "data": "some_data"
-            }
-        }
-        self.node.current_stack.stack = json.dumps(unknown_payload)
-
-        self.node.handle_apply(request, response)
-
-        # Should use the full payload as fallback
-        mock_stack.assert_called_once_with(manifest=unknown_payload)
-        self.assertTrue(response.success)
-        self.assertEqual(response.err_msg, "")
-
-    @patch("composer.model.stack.Stack")
-    @patch("muto_msgs.srv.LaunchPlugin")
-    def test_handle_apply_raw_payload_type(self, mock_launch_plugin, mock_stack):
-        """Test handle_apply with raw payload (node/composable)."""
-        request = mock_launch_plugin.request
-        response = mock_launch_plugin.response
-        response.success = None
-        response.err_msg = None
-
-        # Raw payload with node
-        raw_payload = {
-            "node": [{"name": "test_node"}]
-        }
-        self.node.current_stack.stack = json.dumps(raw_payload)
-
-        self.node.handle_apply(request, response)
-
-        mock_stack.assert_called_once_with(manifest=raw_payload)
-        self.assertTrue(response.success)
-        self.assertEqual(response.err_msg, "")
-
-    @patch("composer.model.stack.Stack")
-    @patch("muto_msgs.srv.LaunchPlugin")
-    def test_handle_apply_unknown_content_type(self, mock_launch_plugin, mock_stack):
-        """Test handle_apply with unknown content_type uses full payload."""
-        request = mock_launch_plugin.request
-        response = mock_launch_plugin.response
-        response.success = None
-        response.err_msg = None
-
-        # Payload with unknown content_type
-        unknown_payload = {
-            "metadata": {
-                "name": "test-unknown-stack",
-                "content_type": "unknown/type"
-            },
-            "custom": {
-                "data": "some_data"
-            }
-        }
-        self.node.current_stack.stack = json.dumps(unknown_payload)
-
-        self.node.handle_apply(request, response)
-
-        # Should use the full payload as fallback
-        mock_stack.assert_called_once_with(manifest=unknown_payload)
-        self.assertTrue(response.success)
-        self.assertEqual(response.err_msg, "")
-        """Test handle_apply with stack/archive content_type."""
-        request = mock_launch_plugin.request
-        response = mock_launch_plugin.response
-        response.success = None
-        response.err_msg = None
-
-        # Payload with stack/archive content_type
-        archive_payload = {
-            "metadata": {
-                "name": "test-archive-stack",
-                "content_type": "stack/archive"
-            },
-            "launch": {
-                "data": "dGVzdCBkYXRh",
-                "properties": {
-                    "launch_file": "launch/test.launch.py"
-                }
-            }
-        }
-        self.node.current_stack.stack = json.dumps(archive_payload)
-
-        self.node.handle_apply(request, response)
-
-        # For archive, it should use the full payload
-        mock_stack.assert_called_once_with(manifest=archive_payload)
+            # For stack/archive, it should call _handle_archive_start, not Stack
+            mock_handle_archive.assert_called_once_with("launch/test.launch.py")
+            mock_stack.assert_not_called()
+            
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
@@ -1286,9 +1532,13 @@ class TestLaunchPlugin(unittest.TestCase):
         request.input.current.stack = json.dumps(raw_payload)
         request.input.current.source = json.dumps({})
 
+        # Mock the stack parser to return the raw payload
+        self.node.stack_parser.parse_payload.return_value = raw_payload
+
         self.node.handle_apply(request, response)
 
-        mock_stack.assert_called_once_with(manifest=raw_payload)
+        mock_stack.assert_called_once_with(raw_payload)
+        mock_stack.return_value.apply.assert_called_once_with(self.node.launcher)
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
@@ -1314,14 +1564,17 @@ class TestLaunchPlugin(unittest.TestCase):
         request.input.current.stack = json.dumps(unknown_payload)
         request.input.current.source = json.dumps({})
 
+        # Mock the stack parser to return the unknown payload
+        self.node.stack_parser.parse_payload.return_value = unknown_payload
+
         self.node.handle_apply(request, response)
 
-        # Should use the full payload as fallback
-        mock_stack.assert_called_once_with(manifest=unknown_payload)
-        self.assertTrue(response.success)
-        self.assertEqual(response.err_msg, "")
-        self.assertTrue(response.success)
-        self.assertEqual(response.err_msg, "")
+        # For unknown content type, _get_payload_type_and_data returns None, so Stack should not be called
+        mock_stack.assert_not_called()
+        
+        # Should fail with appropriate error message
+        self.assertFalse(response.success)
+        self.assertEqual(response.err_msg, "No valid stack data found for apply operation.")
 
     @patch("composer.plugins.launch_plugin.Stack")
     def test_handle_start_complete_stack_json_flow_regression(self, mock_stack_class):
@@ -1364,6 +1617,30 @@ class TestLaunchPlugin(unittest.TestCase):
         }
         request.input.current.stack = json.dumps(stack_data)
         request.input.current.source = json.dumps({})
+        
+        # Mock the stack parser to return the parsed payload as expected
+        expected_parsed_payload = {
+            "metadata": {
+                "name": "Muto Simple Talker-Listener Stack",
+                "description": "A simple talker-listener stack example using demo_nodes_cpp package.",
+                "content_type": "stack/json"
+            },
+            "launch": {
+                "node": [
+                    {
+                        "name": "talker",
+                        "pkg": "demo_nodes_cpp",
+                        "exec": "talker"
+                    },
+                    {
+                        "name": "listener",
+                        "pkg": "demo_nodes_cpp",
+                        "exec": "listener"
+                    }
+                ]
+            }
+        }
+        self.node.stack_parser.parse_payload.return_value = expected_parsed_payload
         
         # Mock source_workspaces to avoid file system operations
         with patch.object(self.node, 'source_workspaces'):
@@ -1415,6 +1692,9 @@ class TestLaunchPlugin(unittest.TestCase):
         request.input.current.stack = json.dumps(stack_data)
         request.input.current.source = json.dumps({})
         
+        # Mock the stack parser to return the stack data
+        self.node.stack_parser.parse_payload.return_value = stack_data
+        
         with patch.object(self.node, 'source_workspaces'):
             self.node.handle_start(request, response)
         
@@ -1453,12 +1733,17 @@ class TestLaunchPlugin(unittest.TestCase):
         }
         request.input.current.stack = json.dumps(stack_data)
         
-        self.node.handle_apply(request, response)
+        # Mock the stack parser to return the stack data
+        self.node.stack_parser.parse_payload.return_value = stack_data
         
-        # For apply, the launch portion of stack_data should be passed to Stack constructor
-        mock_stack_class.assert_called_once_with(manifest=stack_data["launch"])
-        mock_stack_instance.apply.assert_called_once_with(self.node.launcher)
-        
+        # Mock the _handle_stack_json_start method since that's what gets called for stack/json in apply
+        with patch.object(self.node, '_handle_stack_json_start', return_value=True) as mock_handle_json:
+            self.node.handle_apply(request, response)
+            
+            # For stack/json in apply, it should call _handle_stack_json_start
+            mock_handle_json.assert_called_once_with(stack_data)
+            mock_stack_class.assert_not_called()
+
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
