@@ -228,6 +228,11 @@ class Pipeline:
         if manifest is None:
             return None
         stack_msg = StackManifest()
-        stack_msg.name = manifest.get("name", "")
+        # Handle both old format (name at root) and new format (metadata.name)
+        if isinstance(manifest, dict):
+            if 'metadata' in manifest and 'name' in manifest['metadata']:
+                stack_msg.name = manifest['metadata']['name']
+            else:
+                stack_msg.name = manifest.get("name", "")
         stack_msg.stack = json.dumps(manifest)
         return stack_msg       
