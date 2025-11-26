@@ -57,59 +57,58 @@ class TestComposePlugin(unittest.TestCase):
             mock_parse_stack()
         )
 
-    @patch("composer.plugins.compose_plugin.ComposePlugin")
-    @patch.object(MutoDefaultComposePlugin, "publish_composed_stack")
-    def test_handle_compose(self, mock_publish_composed_stack, mock_compose_plugin):
-        request = mock_compose_plugin.request
-        request.start = True
-        response = mock_compose_plugin.response
-        response.success = None
-        response.err_msg = None
-        self.node.incoming_stack = "MockStack"
+    def test_handle_compose(self):
+        # Create proper request/response
+        request = MagicMock()
+        request.input.current.stack = '{"metadata": {"content_type": "stack/json"}, "launch": {}}'
+        response = MagicMock()
+        response.success = False
+        response.err_msg = ""
+        
+        # Mock handler
+        mock_handler = MagicMock()
+        self.node.stack_registry.get_handler = MagicMock(return_value=mock_handler)
+        
         self.node.handle_compose(request, response)
 
+        # Test outcome: verify success
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
-        mock_publish_composed_stack.assert_called_once()
 
-    @patch("composer.plugins.compose_plugin.ComposePlugin")
-    @patch.object(MutoDefaultComposePlugin, "publish_composed_stack")
-    def test_handle_compose_start_not_set(
-        self, mock_publish_composed_stack, mock_compose_plugin
-    ):
-        request = mock_compose_plugin.request
-        request.start = None
-        response = mock_compose_plugin.response(success=None, err_msg=None)
-        self.node.incoming_stack = "MockStack"
+    def test_handle_compose_start_not_set(self):
+        # Test when no handler is found
+        request = MagicMock()
+        request.input.current.stack = ''
+        response = MagicMock()
+        response.success = True
+        response.err_msg = ""
+        
+        # Mock that no handler is found
+        self.node.stack_registry.get_handler = MagicMock(return_value=None)
+        
         self.node.handle_compose(request, response)
 
+        # Test outcome: verify failure
         self.assertFalse(response.success)
-        self.assertEqual(response.err_msg, "Start flag not set in request.")
-        mock_publish_composed_stack.assert_not_called()
-        self.node.get_logger().warn.assert_called_once_with(
-            "Start flag not set in compose request."
-        )
 
-    @patch.object(
-        MutoDefaultComposePlugin,
-        "publish_composed_stack",
-        side_effect=Exception("dummy_exception"),
-    )
-    @patch("composer.plugins.compose_plugin.ComposePlugin")
-    def test_handle_compose_exception(self, mock_compose_plugin, mock_publish):
-        request = mock_compose_plugin.Request()
-        request.start = True
-        response = mock_compose_plugin.Response()
-        self.node.incoming_stack = "MockStack"
+    def test_handle_compose_exception(self):
+        # Test exception handling
+        request = MagicMock()
+        request.input.current.stack = '{"metadata": {"content_type": "stack/json"}}'
+        response = MagicMock()
+        response.success = True
+        response.err_msg = ""
+        
+        # Mock handler that raises exception
+        mock_handler = MagicMock()
+        mock_handler.apply_to_plugin.side_effect = Exception("dummy_exception")
+        self.node.stack_registry.get_handler = MagicMock(return_value=mock_handler)
+        
+        self.node.handle_compose(request, response)
 
-        response = self.node.handle_compose(request, response)
-
+        # Test outcome: verify failure and error message contains exception
         self.assertFalse(response.success)
         self.assertIn("dummy_exception", response.err_msg)
-        self.node.get_logger().error.assert_called_once_with(
-            "Exception during compose: dummy_exception"
-        )
-        mock_publish.assert_called_once_with()
 
     @patch("composer.plugins.compose_plugin.StackManifest")
     def test_parse_stack(self, mock_stack_manifest):

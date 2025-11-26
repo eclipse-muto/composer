@@ -195,7 +195,6 @@ class Pipeline:
         req = plugin.Request()
         if inputManifest:
             req.input.current = inputManifest
-        req.start = True
             
         future = cli.call_async(req)
         rclpy.spin_until_future_complete(executor, future)

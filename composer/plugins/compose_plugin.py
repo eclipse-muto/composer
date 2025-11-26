@@ -12,15 +12,14 @@
 #
 
 import json
+from .base_plugin import BasePlugin, StackOperation
+
 import rclpy
-from rclpy.node import Node
 from std_msgs.msg import String
 from muto_msgs.msg import StackManifest
 from muto_msgs.srv import ComposePlugin
-from composer.model.stack import Stack
 
-
-class MutoDefaultComposePlugin(Node):
+class MutoDefaultComposePlugin(BasePlugin):
     def __init__(self):
         super().__init__("compose_plugin")
 
@@ -35,6 +34,7 @@ class MutoDefaultComposePlugin(Node):
             ComposePlugin, "muto_compose", self.handle_compose
         )
 
+
     def handle_raw_stack(self, stack_msg: String):
         """
         Callback to handle incoming raw stack messages.
@@ -46,6 +46,7 @@ class MutoDefaultComposePlugin(Node):
         except json.JSONDecodeError as e:
             self.get_logger().error(f"Failed to parse raw stack JSON: {e}")
 
+
     def handle_compose(
         self, request: ComposePlugin.Request, response: ComposePlugin.Response
     ):
@@ -53,20 +54,18 @@ class MutoDefaultComposePlugin(Node):
         Service handler for composing the stack.
         Publishes the composed stack if 'start' is True.
         """
+
         try:
-            if request.start:
-                if self.incoming_stack:
-                    self.publish_composed_stack()
-                    response.success = True
-                    response.err_msg = ""
-                else:
-                    response.success = True
-                    response.err_msg = "No default stack."
-                    self.get_logger().warn("No stack to compose.")
-            else:
+            handler, context = self.find_stack_handler(request)
+            if not handler or not context:
                 response.success = False
-                response.err_msg = "Start flag not set in request."
-                self.get_logger().warn("Start flag not set in compose request.")
+                response.err_msg = "No valid handler or context found."
+                self.get_logger().warn("No valid handler or context found.")
+            else:
+                context.operation = StackOperation.COMPOSE
+                handler.apply_to_plugin(self, context, request, response)
+                response.success = True
+
         except Exception as e:
             response.success = False
             response.err_msg = str(e)
@@ -78,6 +77,8 @@ class MutoDefaultComposePlugin(Node):
         ## and transformations to the stack.
         response.output.current = request.input.current
         return response
+
+
 
     def publish_composed_stack(self):
         """
