@@ -16,8 +16,8 @@ from composer.plugins.base_plugin import BasePlugin, StackTypeHandler, StackCont
 from composer.model.stack import Stack
 
 
-class LegacyStackHandler(StackTypeHandler):
-    """Handler for legacy launch/json format stacks."""
+class DittoStackHandler(StackTypeHandler):
+    """Handler for Ditto (legacy launch/json) format stacks."""
     
     def __init__(self, logger=None):
         self.logger = logger
@@ -35,7 +35,7 @@ class LegacyStackHandler(StackTypeHandler):
         content_type = metadata.get("content_type")
         
         # If there's a content_type, it's a properly defined solution
-        if content_type:
+        if content_type and content_type not in ("stack/json", "stack/ditto"):
             return False
         
         # Check for legacy launch structures
@@ -55,29 +55,29 @@ class LegacyStackHandler(StackTypeHandler):
             if context.operation == StackOperation.PROVISION:
                 return True
             elif context.operation == StackOperation.START:
-                return self._start_legacy(context)
+                return self._start_ditto(context)
             elif context.operation == StackOperation.KILL:
-                return self._kill_legacy(context)
+                return self._kill_ditto(context)
             elif context.operation == StackOperation.APPLY:
-                return self._apply_legacy(context)
+                return self._apply_ditto(context)
             else:
                 if self.logger:
-                    self.logger.warning(f"Unsupported operation for legacy stack: {context.operation}")
+                    self.logger.warning(f"Unsupported operation for Ditto stack: {context.operation}")
                 return False
         except Exception as e:
             if self.logger:
-                self.logger.error(f"Error processing legacy stack operation: {e}")
+                self.logger.error(f"Error processing Ditto stack operation: {e}")
             return False
     
     
-    def _start_legacy(self, context: StackContext) -> bool:
-        """Start a legacy stack."""
+    def _start_ditto(self, context: StackContext) -> bool:
+        """Start a Ditto stack."""
         try:
             # Check if it's a script-based legacy stack (on_start/on_kill)
             if context.stack_data.get("on_start") and context.stack_data.get("on_kill"):
                 # Script-based legacy stack - let plugin handle this
                 if self.logger:
-                    self.logger.info("Legacy script-based stack start delegated to plugin")
+                    self.logger.info("Ditto script-based stack start delegated to plugin")
                 return True
             
             # Otherwise, try to use Stack model with node/composable arrays
@@ -94,22 +94,22 @@ class LegacyStackHandler(StackTypeHandler):
                 return True
             
             if self.logger:
-                self.logger.warning("No recognizable launch structure in legacy stack")
+                self.logger.warning("No recognizable launch structure in Ditto stack")
             return False
             
         except Exception as e:
             if self.logger:
-                self.logger.error(f"Error starting legacy stack: {e}")
+                self.logger.error(f"Error starting Ditto stack: {e}")
             return False
     
-    def _kill_legacy(self, context: StackContext) -> bool:
-        """Kill a legacy stack."""
+    def _kill_ditto(self, context: StackContext) -> bool:
+        """Kill a Ditto stack."""
         try:
             # Check if it's a script-based legacy stack
             if context.stack_data.get("on_start") and context.stack_data.get("on_kill"):
                 # Script-based legacy stack - let plugin handle this
                 if self.logger:
-                    self.logger.info("Legacy script-based stack kill delegated to plugin")
+                    self.logger.info("Ditto script-based stack kill delegated to plugin")
                 return True
             
             # Otherwise, try to use Stack model
@@ -126,16 +126,16 @@ class LegacyStackHandler(StackTypeHandler):
                 return True
             
             if self.logger:
-                self.logger.warning("No recognizable launch structure in legacy stack for kill")
+                self.logger.warning("No recognizable launch structure in Ditto stack for kill")
             return False
             
         except Exception as e:
             if self.logger:
-                self.logger.error(f"Error killing legacy stack: {e}")
+                self.logger.error(f"Error killing Ditto stack: {e}")
             return False
     
-    def _apply_legacy(self, context: StackContext) -> bool:
-        """Apply a legacy stack configuration."""
+    def _apply_ditto(self, context: StackContext) -> bool:
+        """Apply a Ditto stack configuration."""
         try:
             # Legacy stacks with node/composable support apply
             if context.stack_data.get("node") or context.stack_data.get("composable"):
@@ -152,10 +152,10 @@ class LegacyStackHandler(StackTypeHandler):
             
             # Script-based legacy stacks don't support apply - no-op
             if self.logger:
-                self.logger.info("Legacy script-based stacks do not support apply (no-op)")
+                self.logger.info("Ditto script-based stacks do not support apply (no-op)")
             return True
             
         except Exception as e:
             if self.logger:
-                self.logger.error(f"Error applying legacy stack: {e}")
+                self.logger.error(f"Error applying Ditto stack: {e}")
             return False
