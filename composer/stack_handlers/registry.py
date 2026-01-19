@@ -43,7 +43,7 @@ class StackTypeRegistry:
         
         Priority:
         1. Properly defined solutions with metadata.content_type
-        2. Legacy format validation
+        2. Ditto format (legacy) validation
         """
         if not isinstance(payload, dict):
             self.logger.warning("Invalid payload type, expected dict")
@@ -54,7 +54,7 @@ class StackTypeRegistry:
         content_type = metadata.get("content_type")
         
         if not content_type:
-            self.logger.debug("No content_type found, checking for legacy format")
+            self.logger.debug("No content_type found, checking for Ditto format")
         
         # Try each registered handler
         for handler in self.handlers:
@@ -70,9 +70,9 @@ class StackTypeRegistry:
         """Automatically discover and register all available handlers."""
         from .json_handler import JsonStackHandler
         from .archive_handler import ArchiveStackHandler
-        from .legacy_handler import LegacyStackHandler
+        from .ditto_handler import DittoStackHandler
         
         # Register in priority order
         self.register_handler(JsonStackHandler(self.logger))
         self.register_handler(ArchiveStackHandler(self.logger, self.ignored_packages))
-        self.register_handler(LegacyStackHandler(self.logger))
+        self.register_handler(DittoStackHandler(self.logger))

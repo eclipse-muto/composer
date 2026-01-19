@@ -18,9 +18,12 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
+from threading import Event
 
+import rclpy
 from rclpy.node import Node
 from composer.utils.stack_parser import StackParser
+from muto_msgs.srv import CoreTwin
 
 WORKSPACES_PATH = os.path.join("/tmp", "muto", "muto_workspaces")
 ARTIFACT_STATE_FILE = ".muto_artifact.json"
@@ -56,6 +59,9 @@ class BasePlugin(Node):
     def __init__(self, node_name: str):
         from composer.stack_handlers.registry import StackTypeRegistry
         Node.__init__(self, node_name)
+        self._stack_definition_client = self.create_client(
+            CoreTwin, "/muto/core_twin/get_stack_definition"
+        )
         self.stack_registry = StackTypeRegistry(self, self.get_logger())
         self.stack_registry.discover_and_register_handlers()
         self.stack_parser = StackParser(self.get_logger())
@@ -113,7 +119,7 @@ class BasePlugin(Node):
         Get the stack handler for the current context.
         Validates the stack manifest before processing.
         """
-        if not request.input.current.stack:
+        if not request:
             return None, None
 
         current_stack = self._safely_parse_stack(request.input.current.stack)
@@ -156,6 +162,88 @@ class BasePlugin(Node):
             return None,None
         return None,None
 
+    def _fetch_stack_manifest(self, stack_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a stack manifest from CoreTwin using the provided stack ID.
+        """
+        if not stack_id:
+            return None
+
+        try:
+            if not self._stack_definition_client:
+                return None
+
+            if not self._stack_definition_client.wait_for_service(timeout_sec=0.5):
+                self.get_logger().warning(
+                    "CoreTwin get_stack_definition service is not available."
+                )
+                return None
+
+            request = CoreTwin.Request()
+            request.input = stack_id
+
+            future = self._stack_definition_client.call_async(request)
+            result_holder = {"manifest": None, "event": Event()}
+
+            def _cb(fut):
+                self._handle_twin_response(fut, result_holder, stack_id)
+
+            future.add_done_callback(_cb)
+
+            completed = result_holder["event"].wait(timeout=5.0)
+            if not completed:
+                self.get_logger().warning(
+                    f"Timeout reached while waiting for stack manifest: {stack_id}"
+                )
+                return None
+
+            return result_holder["manifest"]
+
+        except Exception as exc:
+            self.get_logger().error(
+                f"Error fetching stack manifest for stackId '{stack_id}': {exc}"
+            )
+
+        return None
+
+    def _handle_twin_response(self, future: rclpy.Future, holder: Dict[str, Any], stack_id: str):
+        """
+        Callback to process CoreTwin responses without blocking execution.
+        """
+        try:
+            result = future.result()
+            if not result or not getattr(result, "output", None):
+                self.get_logger().warning(
+                    f"CoreTwin returned an empty manifest for stackId '{stack_id}'."
+                )
+                holder["manifest"] = None
+            else:
+                try:
+                    holder["manifest"] = json.loads(result.output)
+                except json.JSONDecodeError as json_err:
+                    self.get_logger().error(
+                        f"Failed to decode manifest for stackId '{stack_id}': {json_err}"
+                    )
+                    holder["manifest"] = None
+        except Exception as exc:
+            self.get_logger().error(
+                f"Error processing manifest response for stackId '{stack_id}': {exc}"
+            )
+            holder["manifest"] = None
+        finally:
+            holder["event"].set()
+
+    def _is_manifest_payload(self, stack_dict: Dict[str, Any]) -> bool:
+        """
+        Determine whether the provided dictionary already looks like a full stack manifest.
+        """
+        if not isinstance(stack_dict, dict):
+            return False
+
+        # Stack references usually only contain id/state. Anything else is treated as a manifest.
+        reference_keys = {"stackId", "state"}
+        return not set(stack_dict.keys()).issubset(reference_keys)
+
     def _safely_parse_stack(self, stack_string):
         """
         Safely parse a stack string to JSON. Returns dictionary if valid JSON, None otherwise.
@@ -170,12 +258,41 @@ class BasePlugin(Node):
             return None
             
         try:
-            parsed = json.loads(stack_string)
-            if isinstance(parsed, dict):
-                return parsed
+            if isinstance(stack_string, dict):
+                parsed = stack_string
             else:
-                self.get_logger().warning(f"Stack string parsed to non-dict type: {type(parsed)}")
+                parsed = json.loads(stack_string)
+
+            if not isinstance(parsed, dict):
+                self.get_logger().warning(
+                    f"Stack string parsed to non-dict type: {type(parsed)}"
+                )
                 return None
+
+            if self._is_manifest_payload(parsed):
+                return parsed
+
+            # Support payloads that wrap stackId under a value field
+            stack_id = None
+            if "stackId" in parsed:
+                stack_id = parsed.get("stackId")
+            elif "value" in parsed and isinstance(parsed["value"], dict):
+                stack_id = parsed["value"].get("stackId")
+
+            if not stack_id:
+                self.get_logger().warning("Stack payload did not contain a stackId.")
+                return None
+
+            manifest = self._fetch_stack_manifest(stack_id)
+            if manifest:
+                return manifest
+
+            # Fallback to parsed data if manifest retrieval fails
+            self.get_logger().warning(
+                f"Falling back to stack reference for stackId '{stack_id}'."
+            )
+            return parsed
+
         except (json.JSONDecodeError, TypeError) as e:
             self.get_logger().warning(f"Failed to parse stack string as JSON: {e}")
             return None

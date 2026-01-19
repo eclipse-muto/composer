@@ -43,21 +43,21 @@ class TestLaunchPlugin(unittest.TestCase):
         
         # Set up global Stack mocking for handlers
         self.stack_patcher_json = patch('composer.stack_handlers.json_handler.Stack')
-        self.stack_patcher_legacy = patch('composer.stack_handlers.legacy_handler.Stack')
+        self.stack_patcher_ditto = patch('composer.stack_handlers.ditto_handler.Stack')
         self.mock_stack_json = self.stack_patcher_json.start()
-        self.mock_stack_legacy = self.stack_patcher_legacy.start()
+        self.mock_stack_ditto = self.stack_patcher_ditto.start()
         
         # Configure mock Stack instances
         self.mock_stack_instance = MagicMock()
         self.mock_stack_json.return_value = self.mock_stack_instance
-        self.mock_stack_legacy.return_value = self.mock_stack_instance
+        self.mock_stack_ditto.return_value = self.mock_stack_instance
         
         # Don't set up mock current_stack - let the methods parse it from requests
     
     def tearDown(self) -> None:
         """Clean up patches."""
         self.stack_patcher_json.stop()
-        self.stack_patcher_legacy.stop()
+        self.stack_patcher_ditto.stop()
     
     def _create_mock_handler(self, returns_success=True, should_raise=None):
         """Helper to create a mock handler that simulates double dispatch."""
@@ -414,10 +414,10 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
+    @patch('composer.stack_handlers.ditto_handler.Stack')
     @patch('composer.stack_handlers.json_handler.Stack')
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
-    def test_handle_apply_raw_stack(self, mock_launch_plugin, mock_stack_json, mock_stack_legacy):
+    def test_handle_apply_raw_stack(self, mock_launch_plugin, mock_stack_json, mock_stack_ditto):
         """Test handle_apply with raw stack payload."""
         # Use real handlers for this test
         pass  # Registry already initialized in node
@@ -439,7 +439,7 @@ class TestLaunchPlugin(unittest.TestCase):
         # Mock payload type detection for raw stack
         # Use the mock_stack_instance from setUp
         mock_stack_instance = self.mock_stack_instance
-        mock_stack_legacy.return_value = mock_stack_instance
+        mock_stack_ditto.return_value = mock_stack_instance
         mock_stack_json.return_value = mock_stack_instance
 
         self.node.handle_apply(request, response)
@@ -707,10 +707,10 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertEqual(response.err_msg, "No current stack available or start flag not set.")
         mock_core_twin.assert_not_called()
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
+    @patch('composer.stack_handlers.ditto_handler.Stack')
     @patch('composer.stack_handlers.json_handler.Stack')
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
-    def test_handle_apply(self, mock_launch_plugin, mock_stack_json, mock_stack_legacy):
+    def test_handle_apply(self, mock_launch_plugin, mock_stack_json, mock_stack_ditto):
         # Use real handlers for this test
         pass  # Registry already initialized in node
 
@@ -735,7 +735,7 @@ class TestLaunchPlugin(unittest.TestCase):
         # Mock Stack instances are already set up in setUp()
         # mock_stack_instance is available via self.mock_stack_instance
         mock_stack_instance = self.mock_stack_instance
-        mock_stack_legacy.return_value = mock_stack_instance
+        mock_stack_ditto.return_value = mock_stack_instance
         mock_stack_json.return_value = mock_stack_instance
 
         self.node.handle_apply(request, response)
@@ -744,10 +744,10 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
+    @patch('composer.stack_handlers.ditto_handler.Stack')
     @patch('composer.stack_handlers.json_handler.Stack')
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
-    def test_handle_apply_exception(self, mock_launch_plugin, mock_stack_json, mock_stack_legacy):
+    def test_handle_apply_exception(self, mock_launch_plugin, mock_stack_json, mock_stack_ditto):
         request = MagicMock()
         response = MagicMock()
         response.success = False
@@ -764,7 +764,7 @@ class TestLaunchPlugin(unittest.TestCase):
             "No current stack available or start flag not set.",
         )
         # No handler for None stack, so Stack constructors shouldn't be called
-        mock_stack_legacy.assert_not_called()
+        mock_stack_ditto.assert_not_called()
         mock_stack_json.assert_not_called()
 
     @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
@@ -980,10 +980,10 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
+    @patch('composer.stack_handlers.ditto_handler.Stack')
     @patch('composer.stack_handlers.json_handler.Stack')
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
-    def test_handle_apply_stack_json_content_type(self, mock_launch_plugin, mock_stack_json, mock_stack_legacy):
+    def test_handle_apply_stack_json_content_type(self, mock_launch_plugin, mock_stack_json, mock_stack_ditto):
         """Test handle_apply with stack/json content_type."""
         # Use real handlers for this test
         pass  # Registry already initialized in node
@@ -1016,10 +1016,10 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
+    @patch('composer.stack_handlers.ditto_handler.Stack')
     @patch('composer.stack_handlers.json_handler.Stack')
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
-    def test_handle_apply_stack_archive_content_type(self, mock_launch_plugin, mock_stack_json, mock_stack_legacy):
+    def test_handle_apply_stack_archive_content_type(self, mock_launch_plugin, mock_stack_json, mock_stack_ditto):
         """Test handle_apply with stack/archive content_type."""
         # Use real handlers for this test
         pass  # Registry already initialized in node
@@ -1059,10 +1059,10 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
+    @patch('composer.stack_handlers.ditto_handler.Stack')
     @patch('composer.stack_handlers.json_handler.Stack')
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
-    def test_handle_apply_raw_payload_type(self, mock_launch_plugin, mock_stack_json, mock_stack_legacy):
+    def test_handle_apply_raw_payload_type(self, mock_launch_plugin, mock_stack_json, mock_stack_ditto):
         """Test handle_apply with raw payload (node/composable)."""
         # Use real handlers for this test
         pass  # Registry already initialized in node
@@ -1092,10 +1092,10 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
+    @patch('composer.stack_handlers.ditto_handler.Stack')
     @patch('composer.stack_handlers.json_handler.Stack')
     @patch("composer.plugins.launch_plugin.LaunchPlugin")
-    def test_handle_apply_unknown_content_type(self, mock_launch_plugin, mock_stack_json, mock_stack_legacy):
+    def test_handle_apply_unknown_content_type(self, mock_launch_plugin, mock_stack_json, mock_stack_ditto):
         """Test handle_apply with unknown content_type uses full payload."""
         request = MagicMock()
         response = MagicMock()
@@ -1122,15 +1122,15 @@ class TestLaunchPlugin(unittest.TestCase):
 
         # For unknown content type, get_handler returns None, so Stack should not be called
         mock_stack_json.assert_not_called()
-        mock_stack_legacy.assert_not_called()
+        mock_stack_ditto.assert_not_called()
         
         # Should fail with appropriate error message
         self.assertFalse(response.success)
         self.assertEqual(response.err_msg, "No current stack available or start flag not set.")
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
+    @patch('composer.stack_handlers.ditto_handler.Stack')
     @patch('composer.stack_handlers.json_handler.Stack')
-    def test_handle_start_stack_json_missing_launch_section(self, mock_stack_json, mock_stack_legacy):
+    def test_handle_start_stack_json_missing_launch_section(self, mock_stack_json, mock_stack_ditto):
         """
         Test that stack/json without launch section fails gracefully.
         """

@@ -76,8 +76,8 @@ class TestStackHandlerIntegration(unittest.TestCase):
         self.assertIsNotNone(handler)
         self.assertEqual(handler.__class__.__name__, "ArchiveStackHandler")
 
-    def test_legacy_stack_handler_selection(self):
-        """Test that LegacyStackHandler is selected for stacks without content_type."""
+    def test_ditto_stack_handler_selection(self):
+        """Test that DittoStackHandler is selected for stacks without content_type."""
         mock_node = MagicMock()
         mock_logger = MagicMock()
         mock_node.get_logger.return_value = mock_logger
@@ -91,7 +91,7 @@ class TestStackHandlerIntegration(unittest.TestCase):
         
         handler = registry.get_handler(payload)
         self.assertIsNotNone(handler)
-        self.assertEqual(handler.__class__.__name__, "LegacyStackHandler")
+        self.assertEqual(handler.__class__.__name__, "DittoStackHandler")
 
     @patch('composer.stack_handlers.json_handler.Stack')
     def test_launch_plugin_json_stack_integration(self, mock_stack):
