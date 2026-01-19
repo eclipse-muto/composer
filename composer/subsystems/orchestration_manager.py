@@ -48,28 +48,43 @@ class ExecutionPathDeterminer:
     def __init__(self, logger=None):
         self.logger = logger
     
-    def determine_path(self, 
+    def determine_path(self,
                       analyzed_event: StackAnalyzedEvent,
                       current_stack: Optional[Dict] = None,
                       next_stack: Optional[Dict] = None) -> ExecutionPath:
         """Determine execution path and context variables."""
-        
+
         try:
             # Extract information from analyzed event
             analysis_result = analyzed_event.analysis_result
             stack_type = analysis_result.get("stack_type", StackType.UNKNOWN.value)
             action = analyzed_event.action
             stack_payload = analyzed_event.stack_payload  # Use direct field instead of nested lookup
-            
+
+            # Handle kill action specially - it just needs to terminate processes
+            if action == "kill" or analysis_result.get("is_kill_action"):
+                if self.logger:
+                    self.logger.info(f"Kill action detected, executing kill pipeline")
+                return ExecutionPath(
+                    pipeline_name="kill",
+                    context_variables={
+                        "should_run_provision": False,
+                        "should_run_launch": True,  # LaunchPlugin handles kills
+                        "is_kill_action": True,
+                        "stack_id": analysis_result.get("stack_id")
+                    },
+                    requires_merging=False
+                )
+
             # Complex logic extracted from original determine_execution_path method
-            is_next_stack_empty = (not stack_payload.get("node", "") and 
+            is_next_stack_empty = (not stack_payload.get("node", "") and
                                  not stack_payload.get("composable", ""))
             has_launch_description = bool(stack_payload.get("launch_description_source"))
             has_on_start_and_on_kill = all([
-                stack_payload.get("on_start"), 
+                stack_payload.get("on_start"),
                 stack_payload.get("on_kill")
             ])
-            
+
             # Determine execution requirements based on stack type and characteristics
             if stack_type == StackType.ARCHIVE.value:
                 should_run_provision = True
