@@ -9,3 +9,5 @@ log
 .idea
 *.swp
 .devcontainer
+*venv/
+*egg-info/
