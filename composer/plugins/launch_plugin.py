@@ -15,10 +15,8 @@ import os
 import json
 import subprocess
 import asyncio
-import threading
-import signal
 import atexit
-from typing import Optional, Set, Dict
+from typing import Dict
 import rclpy
 from rclpy.callback_groups import ReentrantCallbackGroup
 from muto_msgs.msg import StackManifest
@@ -43,15 +41,12 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             LaunchPlugin, "muto_apply_stack", self.handle_apply
         )
 
-        # self.create_subscription(StackManifest, "composed_stack", self.get_stack, 10)
-
         self.set_stack_cli = self.create_client(CoreTwin, "core_twin/set_current_stack")
 
         self.stack_parser = StackParser(self.get_logger())
-        
-        # A dictionary to keep track of managed subprocesses by launch file
-        # initialize to empty dict
-        self._managed_processes: Dict[str, subprocess.Popen] = dict()
+
+        # Track managed Ros2LaunchParent instances by launch file for consistent lifecycle management
+        self._managed_launchers: Dict[str, Ros2LaunchParent] = dict()
 
         # Ensure a valid asyncio loop exists to avoid 'There is no current event loop' warnings
         try:
@@ -63,13 +58,13 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             0.1, self.run_async_loop, callback_group=ReentrantCallbackGroup()
         )
 
-        atexit.register(self._cleanup_managed_processes)
+        atexit.register(self._cleanup_managed_launchers)
 
 
     def destroy_node(self) -> bool:
         """Ensure launched processes are cleaned up when the node is destroyed."""
-        self.get_logger().info("Destroying launch_plugin node; terminating active launch process if any.")
-        for launch_file in list(self._managed_processes.keys()):
+        self.get_logger().info("Destroying launch_plugin node; terminating active launchers.")
+        for launch_file in list(self._managed_launchers.keys()):
             self._terminate_launch_process(launch_file)
         return super().destroy_node()
 
@@ -165,7 +160,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             if handler and context:
                 context.operation = StackOperation.START
                 self.get_logger().info(
-                    f"Start requested; current number of launched stacks={len(self._managed_processes)}"
+                    f"Start requested; current number of launched stacks={len(self._managed_launchers)}"
                 )
                 handler.apply_to_plugin(self, context, request, response)
                 response.success = True
@@ -211,13 +206,45 @@ class MutoDefaultLaunchPlugin(BasePlugin):
         Returns:
             LaunchPlugin.Response: The response indicating success or failure.
         """
-        handler, context = self.find_stack_handler(request)
         try:
+            self.get_logger().info(
+                f"Kill requested; current number of launched stacks={len(self._managed_launchers)}"
+            )
+
+            # Check if this is a kill-only payload (just stackId reference, not a full manifest)
+            is_kill_only_payload = False
+            stack_id = None
+            if request.input.current.stack:
+                try:
+                    stack_data = json.loads(request.input.current.stack)
+                    # Kill payloads have stackId in value key or path ending in /kill
+                    stack_id = stack_data.get("value", {}).get("stackId") or stack_data.get("stackId")
+                    if stack_id or stack_data.get("path", "").endswith("/kill"):
+                        is_kill_only_payload = True
+                except json.JSONDecodeError:
+                    pass
+
+            if is_kill_only_payload:
+                # Kill all managed launchers for this stack
+                self.get_logger().info(f"Kill action for stack_id={stack_id}")
+                killed_count = 0
+                for launch_file in list(self._managed_launchers.keys()):
+                    self._terminate_launch_process(launch_file)
+                    killed_count += 1
+                self.get_logger().info(f"Killed {killed_count} launcher(s)")
+
+                # Update the current stack in the twin service
+                if stack_id:
+                    self._set_current_stack(stack_id, state="killed")
+
+                response.success = True
+                response.output.current = request.input.current
+                return response
+
+            # Try to use handler for full stack manifests
+            handler, context = self.find_stack_handler(request)
             if handler and context:
                 context.operation = StackOperation.KILL
-                self.get_logger().info(
-                    f"Kill requested; current number of launched stacks={len(self._managed_processes)}"
-                )
                 success = handler.apply_to_plugin(self, context, request=request, response=response)
                 response.success = True
             else:
@@ -228,7 +255,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             self.get_logger().error(f"Exception occurred during kill: {e}")
             response.err_msg = str(e)
             response.success = False
-            
+
         response.output.current = request.input.current
         return response
 
@@ -250,7 +277,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             if handler and context:
                 context.operation = StackOperation.APPLY
                 self.get_logger().info(
-                    f"Apply requested; current number of launched stacks={len(self._managed_processes)}"
+                    f"Apply requested; current number of launched stacks={len(self._managed_launchers)}"
                 )
                 success = handler.apply_to_plugin(self, context, request, response)
                 response.success = True
@@ -267,141 +294,128 @@ class MutoDefaultLaunchPlugin(BasePlugin):
         return response
     
 
-    def _launch_via_ros2(self, context: StackContext, launch_file: str) -> None:
-        """Launch the given launch file in a subprocess using ros2 launch."""
+    def _launch_via_ros2(self, context: StackContext, launch_file: str) -> bool:
+        """
+        Launch the given launch file using Ros2LaunchParent.
+
+        All launches go through Ros2LaunchParent to ensure consistent lifecycle
+        management and node tracking.
+        """
         self._terminate_launch_process(launch_file)
 
-            
         full_launch_file = self.find_file(context.workspace_path, launch_file)
-        
-        if not os.path.exists(full_launch_file):
-            if self.logger:
-                self.logger.error(f"Launch file not found: {full_launch_file}")
-            return False
-            
-            
-        # Create a shell script to source the environment if needed
-        # and launch with the additional launch arguments
-        launchCommand = ["ros2", "launch", full_launch_file]
-        #if self.launch_arguments:
-        #    launchCommand.extend(self.launch_arguments)
-        
-        workingDir = os.path.dirname(os.path.dirname(full_launch_file))
-        script_path = os.path.join(workingDir, "launch_script.sh")
-        script_content = f"#!/bin/bash\nsource {workingDir}/install/setup.bash\nexec \"$@\""
-        with open(script_path, "w") as script_file:
-            script_file.write(script_content)
-        os.chmod(script_path, 0o755)
-        
-        # Use the shell script to launch with proper environment sourcing
-        command = [script_path] + launchCommand
 
-        env = os.environ.copy()
-        self.get_logger().info(f"Launch PATH: {env.get('PATH', '')}")
-        self.get_logger().info(
-            f"Starting launch process in {workingDir}: {' '.join(command)}"
-        )
+        if not full_launch_file or not os.path.exists(full_launch_file):
+            self.get_logger().error(f"Launch file not found: {full_launch_file}")
+            return False
+
+        # Source the workspace before launching
+        working_dir = os.path.dirname(os.path.dirname(full_launch_file))
+        setup_bash = os.path.join(working_dir, "install", "setup.bash")
+        if os.path.exists(setup_bash):
+            self._source_workspace(setup_bash)
+
+        self.get_logger().info(f"Starting launch via Ros2LaunchParent: {full_launch_file}")
+
         try:
-            launch_process = subprocess.Popen(
-                command,
-                env=env,
-                cwd=workingDir or None,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                preexec_fn=os.setsid,
-            )
-            self._managed_processes[launch_file] = launch_process
-            self.get_logger().info(
-                f"Launch process started with PID {launch_process.pid}"
-            )
-            if launch_process.stdout:
-                threading.Thread(
-                    target=self._log_stream,
-                    args=(launch_process.stdout, "stdout"),
-                    daemon=True,
-                ).start()
-            if launch_process.stderr:
-                threading.Thread(
-                    target=self._log_stream,
-                    args=(launch_process.stderr, "stderr"),
-                    daemon=True,
-                ).start()
-            threading.Thread(
-                target=self._monitor_process,
-                daemon=True,
-            ).start()
-        except FileNotFoundError:
-            raise FileNotFoundError(
-                "ros2 command not found in PATH while launching stack"
-            )
+            # Create a Ros2LaunchParent instance with empty args
+            launcher = Ros2LaunchParent([])
+
+            # Use the async method to launch the file
+            async def _do_launch():
+                await launcher.launch_a_launch_file(
+                    launch_file_path=full_launch_file,
+                    launch_file_arguments=[],
+                    noninteractive=True
+                )
+
+            # Schedule the launch on the async loop
+            asyncio.run_coroutine_threadsafe(_do_launch(), self.async_loop)
+
+            # Track the launcher for lifecycle management
+            self._managed_launchers[launch_file] = launcher
+            self.get_logger().info(f"Launch initiated for {launch_file}")
+            return True
+
         except Exception as exc:
+            self.get_logger().error(f"Failed to start launch via Ros2LaunchParent: {exc}")
             raise RuntimeError(f"Failed to start launch process: {exc}")
 
+    def _source_workspace(self, setup_bash: str) -> None:
+        """Source a workspace setup.bash file to update environment."""
+        try:
+            command = f"bash -c 'source {setup_bash} && env'"
+            result = subprocess.run(
+                command,
+                stdout=subprocess.PIPE,
+                shell=True,
+                executable="/bin/bash",
+                check=True,
+                text=True,
+            )
+            env_vars = dict(
+                line.split("=", 1)
+                for line in result.stdout.splitlines()
+                if "=" in line
+            )
+            os.environ.update(env_vars)
+            self.get_logger().debug(f"Sourced workspace: {setup_bash}")
+        except Exception as e:
+            self.get_logger().warning(f"Failed to source workspace {setup_bash}: {e}")
+
+    def _set_current_stack(self, stack_id: str, state: str = "unknown") -> bool:
+        """
+        Update the current stack in the CoreTwin service.
+
+        Args:
+            stack_id: The stack ID to set as current
+            state: The state of the stack (e.g., "running", "killed", "unknown")
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if not self.set_stack_cli.wait_for_service(timeout_sec=5.0):
+                self.get_logger().warning("CoreTwin set_current_stack service not available")
+                return False
+
+            request = CoreTwin.Request()
+            request.input = stack_id
+
+            future = self.set_stack_cli.call_async(request)
+            self.get_logger().info(f"Setting current stack to {stack_id} with state={state}")
+            return True
+
+        except Exception as e:
+            self.get_logger().error(f"Error calling set_current_stack: {e}")
+            return False
+
     def _terminate_launch_process(self, launch_file: str) -> None:
-        if launch_file in self._managed_processes:
-            launch_process = self._managed_processes[launch_file]
-            if launch_process.poll() is None:
-                self.get_logger().info("Terminating existing launch process")
-                try:
-                    pgid = os.getpgid(launch_process.pid)
-                    self.get_logger().debug(f"Sending SIGTERM to process group {pgid}")
-                    os.killpg(pgid, signal.SIGTERM)
-                except ProcessLookupError:
-                    self.get_logger().debug("Process group already gone when sending SIGTERM")
-                pass
+        """
+        Terminate a launch process using Ros2LaunchParent.kill().
+
+        Uses Ros2LaunchParent's built-in lifecycle management for consistent termination.
+        """
+        if launch_file in self._managed_launchers:
+            launcher = self._managed_launchers[launch_file]
+            self.get_logger().info(f"Terminating launcher for {launch_file}")
             try:
-                launch_process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                try:
-                    pgid = os.getpgid(launch_process.pid)
-                    self.get_logger().warning(f"Process did not exit; sending SIGKILL to {pgid}")
-                    os.killpg(pgid, signal.SIGKILL)
-                except ProcessLookupError:
-                    self.get_logger().debug("Process group already gone when sending SIGKILL")
-                self.get_logger().warning(
-                    "Launch process did not terminate gracefully; killed."
-                )
+                launcher.kill()
+                self.get_logger().info(f"Launcher for {launch_file} terminated.")
+            except Exception as e:
+                self.get_logger().warning(f"Error terminating launcher for {launch_file}: {e}")
             finally:
-                self.get_logger().info("Existing launch process terminated.")
-            self._managed_processes.pop(launch_file, None)
+                self._managed_launchers.pop(launch_file, None)
 
-    def _log_stream(self, stream, label: str) -> None:
-        for line in iter(stream.readline, ""):
-            text = line.strip()
-            if text:
-                self.get_logger().info(f"launch {label}: {text}")
-        stream.close()
-
-    def _monitor_process(self) -> None:
-        if not self.launch_process:
-            return
-        process = self.launch_process
-        returncode = process.wait()
-        self._managed_processes.discard(process)
-        if process is self.launch_process:
-            self.launch_process = None
-        self.get_logger().info(
-            f"Launch process exited with return code {returncode}"
-        )
-
-    def _cleanup_managed_processes(self) -> None:
-        for process in list(self._managed_processes):
-            if process.poll() is None:
-                try:
-                    pgid = os.getpgid(process.pid)
-                    os.killpg(pgid, signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    try:
-                        pgid = os.getpgid(process.pid)
-                        os.killpg(pgid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
-        self._managed_processes.clear()
+    def _cleanup_managed_launchers(self) -> None:
+        """Clean up all managed launchers on exit."""
+        for launch_file in list(self._managed_launchers.keys()):
+            try:
+                launcher = self._managed_launchers[launch_file]
+                launcher.kill()
+            except Exception as e:
+                self.get_logger().warning(f"Error cleaning up launcher {launch_file}: {e}")
+        self._managed_launchers.clear()
 
 
 
