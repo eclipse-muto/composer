@@ -212,23 +212,29 @@ class StackParser:
     def validate_stack(self, stack: Dict[str, Any]) -> bool:
         """
         Validate that the parsed result is a valid stack definition.
-        
+
         Args:
             stack: Stack dictionary to validate
-            
+
         Returns:
             True if valid stack, False otherwise
         """
         if not isinstance(stack, dict):
             return False
-            
-        # Basic validation - at least one of these should be present for a valid stack
+
+        # Check for new format: metadata with content_type + launch section
+        metadata = stack.get("metadata", {})
+        content_type = metadata.get("content_type", "")
+        if content_type.startswith("stack/") and stack.get("launch"):
+            return True
+
+        # Basic validation for legacy formats - at least one of these should be present
         required_fields = ["node", "composable", "launch_description_source", "artifact", "archive_properties"]
         optional_fields = ["stackId", "name", "context", "on_start", "on_kill", "content_type"]
-        
+
         has_required = any(field in stack for field in required_fields)
         has_structure = any(field in stack for field in required_fields + optional_fields)
-        
+
         return has_required or has_structure
 
 
