@@ -153,6 +153,99 @@ class TestStackAnalyzer(unittest.TestCase):
         self.assertEqual(analyzed_event.action, "start")
         self.assertEqual(analyzed_event.analysis_result["stack_type"], StackType.ARCHIVE.value)
 
+    def test_handle_kill_action_with_stack_id(self):
+        """Test that kill action only requires stackId, not full manifest."""
+        published_events = []
+
+        def capture_event(event):
+            published_events.append(event)
+
+        self.event_bus.subscribe(EventType.STACK_ANALYZED, capture_event)
+
+        # Create kill request with only stackId (no full manifest)
+        request_event = StackRequestEvent(
+            event_type=EventType.STACK_REQUEST,
+            source_component="test",
+            stack_name="test_stack",
+            action="kill",
+            stack_payload={
+                "stackId": "org.eclipse.muto.sandbox:talker_listener"
+            }
+        )
+
+        # Handle the event - should not fail validation
+        self.analyzer.handle_stack_request(request_event)
+
+        # Verify analyzed event was published with kill-specific metadata
+        self.assertEqual(len(published_events), 1)
+        analyzed_event = published_events[0]
+        self.assertEqual(analyzed_event.action, "kill")
+        self.assertEqual(analyzed_event.analysis_result["stack_type"], "kill")
+        self.assertTrue(analyzed_event.analysis_result["is_kill_action"])
+        self.assertEqual(analyzed_event.analysis_result["stack_id"], "org.eclipse.muto.sandbox:talker_listener")
+        self.assertFalse(analyzed_event.processing_requirements["requires_provision"])
+        self.assertFalse(analyzed_event.processing_requirements["requires_launch"])
+
+    def test_handle_kill_action_with_nested_stack_id(self):
+        """Test that kill action works with stackId nested in value key (real payload format)."""
+        published_events = []
+
+        def capture_event(event):
+            published_events.append(event)
+
+        self.event_bus.subscribe(EventType.STACK_ANALYZED, capture_event)
+
+        # Create kill request with stackId inside value key (real payload format)
+        request_event = StackRequestEvent(
+            event_type=EventType.STACK_REQUEST,
+            source_component="test",
+            stack_name="test_stack",
+            action="kill",
+            stack_payload={
+                "topic": "org.eclipse.muto.sandbox/ibo-test-vehicle/things/live/messages/stack/commands/kill",
+                "headers": {"content-type": "application/json"},
+                "path": "/inbox/messages/stack/commands/kill",
+                "value": {"stackId": "org.eclipse.muto.sandbox:talker_listener"}
+            }
+        )
+
+        # Handle the event - should not fail validation
+        self.analyzer.handle_stack_request(request_event)
+
+        # Verify analyzed event was published with kill-specific metadata
+        self.assertEqual(len(published_events), 1)
+        analyzed_event = published_events[0]
+        self.assertEqual(analyzed_event.action, "kill")
+        self.assertEqual(analyzed_event.analysis_result["stack_type"], "kill")
+        self.assertTrue(analyzed_event.analysis_result["is_kill_action"])
+        self.assertEqual(analyzed_event.analysis_result["stack_id"], "org.eclipse.muto.sandbox:talker_listener")
+        self.assertTrue(analyzed_event.processing_requirements["is_kill_action"])
+
+    def test_handle_kill_action_without_stack_id(self):
+        """Test that kill action without stackId is rejected."""
+        published_events = []
+
+        def capture_event(event):
+            published_events.append(event)
+
+        self.event_bus.subscribe(EventType.STACK_ANALYZED, capture_event)
+
+        # Create kill request without stackId
+        request_event = StackRequestEvent(
+            event_type=EventType.STACK_REQUEST,
+            source_component="test",
+            stack_name="test_stack",
+            action="kill",
+            stack_payload={}
+        )
+
+        # Handle the event - should fail due to missing stackId
+        self.analyzer.handle_stack_request(request_event)
+
+        # Verify no event was published (validation failed)
+        self.assertEqual(len(published_events), 0)
+        self.logger.error.assert_called()
+
 
 class TestStackProcessor(unittest.TestCase):
     

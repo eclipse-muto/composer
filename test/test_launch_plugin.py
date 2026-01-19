@@ -1145,7 +1145,7 @@ class TestLaunchPlugin(unittest.TestCase):
 
         # Mock handler that returns failure for missing launch section
         self.default_mock_handler.apply_to_plugin = MagicMock(return_value=False)
-        
+
         # Stack data without launch section
         stack_data = {
             "metadata": {
@@ -1156,17 +1156,16 @@ class TestLaunchPlugin(unittest.TestCase):
         }
         request.input.current.stack = json.dumps(stack_data)
         request.input.current.source = json.dumps({})
-        
+
         # Mock the stack parser to return the stack data
         self.node.stack_parser.parse_payload.return_value = stack_data
-        
+
         with patch.object(self.node, 'source_workspaces'):
             self.node.handle_start(request, response)
 
-        # Handler succeeds but logs error about missing launch section
-        # The response.success is True because find_stack_handler finds a handler
-        # even though the handler logs an error internally
-        self.assertTrue(response.success)
+        # Validation now catches missing launch section at find_stack_handler level
+        # Response should fail because stack validation rejects malformed stacks early
+        self.assertFalse(response.success)
 
 if __name__ == "__main__":
     unittest.main()

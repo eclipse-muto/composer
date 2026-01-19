@@ -15,28 +15,24 @@ import os
 import unittest
 import json
 from unittest.mock import MagicMock, patch
-import rclpy
 from std_msgs.msg import String
 from composer.plugins.compose_plugin import MutoDefaultComposePlugin
+from composer.utils.stack_parser import StackParser
 
 
 class TestComposePlugin(unittest.TestCase):
     def setUp(self):
-        self.node = MutoDefaultComposePlugin()
+        self.node = MutoDefaultComposePlugin.__new__(MutoDefaultComposePlugin)
         self.node.incoming_stack = None
+        self.node.next_stack = None
         self.node.composed_stack_publisher = MagicMock()
+        self.node.stack_registry = MagicMock()
         self.node.get_logger = MagicMock()
+        self.node.stack_parser = StackParser(self.node.get_logger())
+        self.node.destroy_node = MagicMock()
 
     def tearDown(self):
         self.node.destroy_node()
-
-    @classmethod
-    def setUpClass(cls):
-        rclpy.init()
-
-    @classmethod
-    def tearDownClass(cls):
-        rclpy.shutdown()
 
     def test_handle_raw_stack(self):
         self.node.incoming_stack = None
@@ -60,7 +56,7 @@ class TestComposePlugin(unittest.TestCase):
     def test_handle_compose(self):
         # Create proper request/response
         request = MagicMock()
-        request.input.current.stack = '{"metadata": {"content_type": "stack/json"}, "launch": {}}'
+        request.input.current.stack = '{"metadata": {"content_type": "stack/json"}, "launch": {"node": []}}'
         response = MagicMock()
         response.success = False
         response.err_msg = ""
@@ -94,7 +90,7 @@ class TestComposePlugin(unittest.TestCase):
     def test_handle_compose_exception(self):
         # Test exception handling
         request = MagicMock()
-        request.input.current.stack = '{"metadata": {"content_type": "stack/json"}}'
+        request.input.current.stack = '{"metadata": {"content_type": "stack/json"}, "launch": {"node": []}}'
         response = MagicMock()
         response.success = True
         response.err_msg = ""
