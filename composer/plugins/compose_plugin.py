@@ -56,6 +56,26 @@ class MutoDefaultComposePlugin(BasePlugin):
         """
 
         try:
+            # Check if this is a kill action - kill actions pass through compose without validation
+            is_kill_action = False
+            if request.input.current.stack:
+                try:
+                    stack_data = json.loads(request.input.current.stack)
+                    # Kill actions have stackId in value key or at top level, not a full manifest
+                    if stack_data.get("value", {}).get("stackId") or (
+                        stack_data.get("path", "").endswith("/kill") and not stack_data.get("launch")
+                    ):
+                        is_kill_action = True
+                except json.JSONDecodeError:
+                    pass
+
+            if is_kill_action:
+                # Kill actions don't need compose validation - just pass through
+                self.get_logger().info("Kill action detected - skipping compose validation")
+                response.success = True
+                response.output.current = request.input.current
+                return response
+
             handler, context = self.find_stack_handler(request)
             if not handler or not context:
                 response.success = False
@@ -70,11 +90,7 @@ class MutoDefaultComposePlugin(BasePlugin):
             response.success = False
             response.err_msg = str(e)
             self.get_logger().error(f"Exception during compose: {e}")
-        
-        ## Simply chain the input to putput for now..
-        ## This plugin should be able to determine how 
-        ## the pipeline will continue to work i.e. apply policies
-        ## and transformations to the stack.
+
         response.output.current = request.input.current
         return response
 
