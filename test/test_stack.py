@@ -158,7 +158,6 @@ class TestStack(unittest.TestCase):
         self.assertEqual(len(flat_composables), 1)
         self.assertEqual(flat_composables[0].name, "test_container")
         self.assertEqual(len(flat_composables[0].nodes), 1)
-        print(flat_composables[0].nodes)
 
     def test_compare_ros_params(self):
         params1 = [{"param1": "value1"}, {"param2": "value2"}]

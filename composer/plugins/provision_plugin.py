@@ -28,7 +28,6 @@ class MutoProvisionPlugin(BasePlugin):
 
     def __init__(self):
         super().__init__("provision_plugin")
-        # self.create_subscription(StackManifest, "composed_stack", self.get_stack, 10)
         self.provision_srv = self.create_service(
             ProvisionPlugin, "muto_provision", self.handle_provision
         )

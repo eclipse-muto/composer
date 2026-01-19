@@ -11,10 +11,13 @@
 #   Composiv.ai - initial API and implementation
 #
 
+import logging
 import subprocess
 import shlex
 import yaml
 import re
+
+logger = logging.getLogger(__name__)
 
 
 class Param:
@@ -51,9 +54,9 @@ class Param:
                 return ros_parameters
 
             except yaml.YAMLError as e:
-                print(f"Yaml read error: {e}")
+                logger.error(f"Yaml read error: {e}")
             except Exception as e:
-                print(f"Failed to read from file '{filepath}': {e}")
+                logger.error(f"Failed to read from file '{filepath}': {e}")
                 return None
             
 
@@ -62,7 +65,7 @@ class Param:
         try:
             return subprocess.check_output(shlex.split(command), text=True).strip()
         except subprocess.CalledProcessError as e:
-            print(f"Command execution failed: {e}")
+            logger.error(f"Command execution failed: {e}")
             return None
 
     def _parse_value(self, value):

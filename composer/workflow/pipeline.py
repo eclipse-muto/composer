@@ -102,10 +102,6 @@ class Pipeline:
         executor = rclpy.create_node(f"{self.name}_pipeline_executor", enable_rosout=False)
         failed = False
 
-        ## Request and responses are chained to pass stack manifests between steps
-        ##.  initial request = xxx
-        ##.  repeat all steps (nextstep):
-        #        request = nextstep(request)
         input_manifest = self.toStackManifest(next_manifest)
         for item in self.steps:
             if failed:
@@ -188,10 +184,6 @@ class Pipeline:
             )
             return None
 
-        ## Request and responses are chained to pass stack manifests between steps
-        ##.  initial request = xxx
-        ##.  repeat all steps (nextstep):
-        #        request = nextstep(request)
         req = plugin.Request()
         if inputManifest:
             req.input.current = inputManifest

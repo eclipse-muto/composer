@@ -132,7 +132,9 @@ class Ros2LaunchParent:
         try:
             loop.run_until_complete(asyncio.gather(launch_task, wait_for_stop_event()))
         except Exception as e:
-            print(f"An exception occurred during the launch process: {e}")
+            rclpy.logging.get_logger("muto_launch_parent").error(
+                f"An exception occurred during the launch process: {e}"
+            )
         finally:
             loop.close()
 

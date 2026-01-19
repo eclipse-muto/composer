@@ -304,6 +304,7 @@ class MutoComposer(Node):
 
 def main(args=None):
     """Main entry point for the Muto Composer node."""
+    composer = None
     try:
         rclpy.init(args=args)
         composer = MutoComposer()
@@ -311,12 +312,10 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        print(f"Error in main: {e}")
+        rclpy.logging.get_logger("muto_composer").error(f"Error in main: {e}")
     finally:
-        try:
+        if composer is not None:
             composer.destroy_node()
-        except:
-            pass
-        
+
         if rclpy.ok():
             rclpy.shutdown()

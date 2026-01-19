@@ -131,10 +131,6 @@ def main():
         ld.entities, context, nodes, composable_nodes, containers
     )
 
-    # If you need to print more details later, you can resolve other attributes the same way:
-    # for n in nodes:
-    #    resolved_name = resolve_substitutions(context, n._Node__node_name)
-    #    print(f"Node name: {resolved_name}")
 
 
 if __name__ == "__main__":
