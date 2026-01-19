@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from rclpy.node import Node
+from composer.utils.stack_parser import StackParser
 
 WORKSPACES_PATH = os.path.join("/tmp", "muto", "muto_workspaces")
 ARTIFACT_STATE_FILE = ".muto_artifact.json"
@@ -51,12 +52,13 @@ class StackContext:
 
 class BasePlugin(Node):
     """Base class for stack plugins implementing the Plugin interface."""
-    
+
     def __init__(self, node_name: str):
         from composer.stack_handlers.registry import StackTypeRegistry
         Node.__init__(self, node_name)
         self.stack_registry = StackTypeRegistry(self, self.get_logger())
         self.stack_registry.discover_and_register_handlers()
+        self.stack_parser = StackParser(self.get_logger())
 
        
     # Plugin interface implementation - single accept method
@@ -109,10 +111,11 @@ class BasePlugin(Node):
     def find_stack_handler(self, request):
         """
         Get the stack handler for the current context.
+        Validates the stack manifest before processing.
         """
         if not request.input.current.stack:
             return None, None
-        
+
         current_stack = self._safely_parse_stack(request.input.current.stack)
         # encode str and sha256 hash of the stack contents
         # Handle both real strings and test mocks
@@ -122,6 +125,11 @@ class BasePlugin(Node):
             hash = None
         try:
             if current_stack:
+                # Validate stack manifest before processing
+                if not self._validate_stack_manifest(current_stack):
+                    self.get_logger().error("Stack manifest validation failed")
+                    return None, None
+
                 # Get appropriate handler from registry
                 handler = self.stack_registry.get_handler(current_stack)
                 if handler:
@@ -171,7 +179,42 @@ class BasePlugin(Node):
         except (json.JSONDecodeError, TypeError) as e:
             self.get_logger().warning(f"Failed to parse stack string as JSON: {e}")
             return None
-        
+
+    def _validate_stack_manifest(self, stack: Dict[str, Any]) -> bool:
+        """
+        Validate that the stack manifest is well-formed before processing.
+
+        Args:
+            stack: The parsed stack dictionary
+
+        Returns:
+            True if valid, False otherwise
+        """
+        if not self.stack_parser.validate_stack(stack):
+            self.get_logger().warning("Stack manifest failed basic validation - missing required structure")
+            return False
+
+        # Additional validation: check for content_type consistency if metadata present
+        metadata = stack.get("metadata", {})
+        content_type = metadata.get("content_type")
+
+        if content_type:
+            # Validate that the content matches declared type
+            if content_type == "stack/archive":
+                if not stack.get("launch"):
+                    self.get_logger().warning(
+                        "Stack declares stack/archive but missing launch section"
+                    )
+                    return False
+            elif content_type == "stack/json":
+                if not stack.get("launch"):
+                    self.get_logger().warning(
+                        "Stack declares stack/json but missing launch section"
+                    )
+                    return False
+
+        return True
+
 
 class StackTypeHandler(ABC):
     """
