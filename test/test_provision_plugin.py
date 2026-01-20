@@ -19,7 +19,8 @@ from unittest.mock import MagicMock, call, patch
 
 import rclpy
 
-from composer.plugins.provision_plugin import WORKSPACES_PATH, MutoProvisionPlugin
+from composer.plugins.provision_plugin import MutoProvisionPlugin
+from composer.utils.paths import WORKSPACES_PATH
 
 
 class TestMutoProvisionPlugin(unittest.TestCase):

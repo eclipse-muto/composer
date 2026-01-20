@@ -40,6 +40,11 @@ class EventType(Enum):
     ORCHESTRATION_STARTED = "orchestration.started"
     ORCHESTRATION_COMPLETED = "orchestration.completed"
     ORCHESTRATION_FAILED = "orchestration.failed"
+
+    # Rollback Events
+    ROLLBACK_STARTED = "orchestration.rollback.started"
+    ROLLBACK_COMPLETED = "orchestration.rollback.completed"
+    ROLLBACK_FAILED = "orchestration.rollback.failed"
     
     # Pipeline Events
     PIPELINE_REQUESTED = "pipeline.requested"
@@ -200,20 +205,93 @@ class OrchestrationStartedEvent(BaseComposeEvent):
 
 class OrchestrationCompletedEvent(BaseComposeEvent):
     """Event triggered when orchestration completes successfully."""
-    
+
     def __init__(self, event_type: EventType, source_component: str, orchestration_id: str,
                  final_stack_state: Optional[Dict[str, Any]] = None,
                  execution_summary: Optional[Dict[str, Any]] = None,
                  duration: float = 0.0, **kwargs):
         super().__init__(
-            event_type=event_type, 
-            source_component=source_component, 
+            event_type=event_type,
+            source_component=source_component,
             orchestration_id=orchestration_id,
             **kwargs
         )
         self.final_stack_state = final_stack_state or {}
         self.execution_summary = execution_summary or {}
         self.duration = duration
+
+
+class OrchestrationFailedEvent(BaseComposeEvent):
+    """Event triggered when orchestration fails."""
+
+    def __init__(self, event_type: EventType, source_component: str, orchestration_id: str,
+                 error_details: Optional[str] = None,
+                 failed_step: Optional[str] = None,
+                 stack_payload: Optional[Dict[str, Any]] = None,
+                 can_rollback: bool = False, **kwargs):
+        super().__init__(
+            event_type=event_type,
+            source_component=source_component,
+            orchestration_id=orchestration_id,
+            stack_payload=stack_payload,
+            **kwargs
+        )
+        self.error_details = error_details or ""
+        self.failed_step = failed_step or ""
+        self.can_rollback = can_rollback
+
+
+class RollbackStartedEvent(BaseComposeEvent):
+    """Event triggered when rollback to previous stack version begins."""
+
+    def __init__(self, event_type: EventType, source_component: str,
+                 orchestration_id: Optional[str] = None,
+                 previous_stack: Optional[Dict[str, Any]] = None,
+                 failed_stack: Optional[Dict[str, Any]] = None,
+                 failure_reason: str = "", **kwargs):
+        super().__init__(
+            event_type=event_type,
+            source_component=source_component,
+            orchestration_id=orchestration_id or str(uuid.uuid4()),
+            **kwargs
+        )
+        self.previous_stack = previous_stack or {}
+        self.failed_stack = failed_stack or {}
+        self.failure_reason = failure_reason
+
+
+class RollbackCompletedEvent(BaseComposeEvent):
+    """Event triggered when rollback completes successfully."""
+
+    def __init__(self, event_type: EventType, source_component: str,
+                 orchestration_id: str,
+                 restored_stack: Optional[Dict[str, Any]] = None,
+                 rollback_duration: float = 0.0, **kwargs):
+        super().__init__(
+            event_type=event_type,
+            source_component=source_component,
+            orchestration_id=orchestration_id,
+            **kwargs
+        )
+        self.restored_stack = restored_stack or {}
+        self.rollback_duration = rollback_duration
+
+
+class RollbackFailedEvent(BaseComposeEvent):
+    """Event triggered when rollback fails."""
+
+    def __init__(self, event_type: EventType, source_component: str,
+                 orchestration_id: str,
+                 error_details: str = "",
+                 original_failure: str = "", **kwargs):
+        super().__init__(
+            event_type=event_type,
+            source_component=source_component,
+            orchestration_id=orchestration_id,
+            **kwargs
+        )
+        self.error_details = error_details
+        self.original_failure = original_failure
 
 
 class PipelineRequestedEvent(BaseComposeEvent):

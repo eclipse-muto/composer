@@ -59,3 +59,23 @@ pipelines:
     compensation:
       - service: muto_kill_stack
         plugin: LaunchPlugin
+  - name: rollback
+    description: "Rollback to previous stack version on deployment failure"
+    pipeline:
+      - sequence:
+        - service: muto_kill_stack
+          plugin: LaunchPlugin
+          name: kill_failed_stack
+        - service: muto_compose
+          plugin: ComposePlugin
+          name: compose_previous
+        - service: muto_provision
+          plugin: ProvisionPlugin
+          name: provision_previous
+          condition: "should_run_provision == True"
+        - service: muto_start_stack
+          plugin: LaunchPlugin
+          name: start_previous_stack
+    compensation:
+      - service: muto_kill_stack
+        plugin: LaunchPlugin

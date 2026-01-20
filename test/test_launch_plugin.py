@@ -158,14 +158,16 @@ class TestLaunchPlugin(unittest.TestCase):
         mock_subprocess_run.assert_not_called()
         mock_environ_update.assert_not_called()
 
+    @patch("composer.utils.paths.get_workspaces_path", return_value="/tmp/muto/muto_workspaces")
     @patch("subprocess.run")
     @patch("os.environ.update")
-    def test_source_workspace(self, mock_environ_update, mock_subprocess_run):
+    def test_source_workspace(self, mock_environ_update, mock_subprocess_run, mock_get_path):
         mock_current = MagicMock()
         mock_current.source = json.dumps({"workspace_name": "/mock/file"})
         # Mock the _get_stack_name method
         with patch.object(self.node, '_get_stack_name', return_value="Test Stack"):
-            self.node.source_workspaces(mock_current)
+            with patch("composer.plugins.launch_plugin.WORKSPACES_PATH", "/tmp/muto/muto_workspaces"):
+                self.node.source_workspaces(mock_current)
 
         self.node.get_logger().info.assert_called_with(
             "Sourced workspace: workspace_name"

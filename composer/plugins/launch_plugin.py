@@ -16,15 +16,38 @@ import json
 import subprocess
 import asyncio
 import atexit
-from typing import Dict
+from typing import Dict, Union
 import rclpy
 from rclpy.callback_groups import ReentrantCallbackGroup
 from muto_msgs.msg import StackManifest
 from muto_msgs.srv import LaunchPlugin, CoreTwin
 from composer.workflow.launcher import Ros2LaunchParent
-from composer.plugins.provision_plugin import WORKSPACES_PATH
+from composer.utils.paths import WORKSPACES_PATH
 from composer.utils.stack_parser import StackParser
 from .base_plugin import BasePlugin, StackContext, StackOperation
+
+
+class ShellProcessWrapper:
+    """
+    Wrapper for subprocess.Popen to provide a compatible interface with Ros2LaunchParent
+    for lifecycle management in _managed_launchers dictionary.
+    """
+
+    def __init__(self, process: subprocess.Popen, script_path: str):
+        self.process = process
+        self.script_path = script_path
+
+    def kill(self) -> None:
+        """Terminate the shell process and its process group."""
+        if self.process.poll() is None:  # Process is still running
+            try:
+                # Kill the entire process group (handles child processes)
+                os.killpg(os.getpgid(self.process.pid), 9)
+            except (ProcessLookupError, OSError):
+                # Process already terminated
+                pass
+            finally:
+                self.process.wait()
 
 
 class MutoDefaultLaunchPlugin(BasePlugin):
@@ -45,8 +68,9 @@ class MutoDefaultLaunchPlugin(BasePlugin):
 
         self.stack_parser = StackParser(self.get_logger())
 
-        # Track managed Ros2LaunchParent instances by launch file for consistent lifecycle management
-        self._managed_launchers: Dict[str, Ros2LaunchParent] = dict()
+        # Track managed launchers by launch file for consistent lifecycle management
+        # Supports both Ros2LaunchParent (for .launch.py) and ShellProcessWrapper (for .sh)
+        self._managed_launchers: Dict[str, Union[Ros2LaunchParent, ShellProcessWrapper]] = dict()
 
         # Ensure a valid asyncio loop exists to avoid 'There is no current event loop' warnings
         try:
@@ -296,10 +320,11 @@ class MutoDefaultLaunchPlugin(BasePlugin):
 
     def _launch_via_ros2(self, context: StackContext, launch_file: str) -> bool:
         """
-        Launch the given launch file using Ros2LaunchParent.
+        Launch the given file using appropriate method based on file type.
 
-        All launches go through Ros2LaunchParent to ensure consistent lifecycle
-        management and node tracking.
+        Supports:
+        - ROS 2 launch files (.launch.py, .launch.xml, .launch.yaml) via Ros2LaunchParent
+        - Shell scripts (.sh) via subprocess
         """
         self._terminate_launch_process(launch_file)
 
@@ -309,13 +334,70 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             self.get_logger().error(f"Launch file not found: {full_launch_file}")
             return False
 
+        # Determine launch method based on file extension
+        if full_launch_file.endswith('.sh'):
+            return self._launch_via_shell(context, full_launch_file, launch_file)
+        else:
+            return self._launch_via_ros2_launch(context, full_launch_file, launch_file)
+
+    def _launch_via_shell(self, context: StackContext, full_path: str, launch_file: str) -> bool:
+        """
+        Launch a shell script as a subprocess.
+
+        Args:
+            context: Stack context with workspace information
+            full_path: Full path to the shell script
+            launch_file: Original launch file name (for tracking)
+        """
+        self.get_logger().info(f"Starting shell script: {full_path}")
+
+        # Source workspace setup.bash if available
+        workspace_dir = context.workspace_path
+        setup_bash = os.path.join(workspace_dir, "install", "setup.bash")
+
+        try:
+            # Build the command - source setup.bash if available, then run script
+            if os.path.exists(setup_bash):
+                command = f"source {setup_bash} && bash {full_path}"
+            else:
+                command = f"bash {full_path}"
+
+            # Start the process in the background
+            process = subprocess.Popen(
+                command,
+                shell=True,
+                executable="/bin/bash",
+                cwd=workspace_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                preexec_fn=os.setsid  # Create new process group for cleanup
+            )
+
+            # Store process for lifecycle management (using a wrapper object)
+            self._managed_launchers[launch_file] = ShellProcessWrapper(process, full_path)
+            self.get_logger().info(f"Shell script launched with PID {process.pid}: {launch_file}")
+            return True
+
+        except Exception as exc:
+            self.get_logger().error(f"Failed to start shell script: {exc}")
+            raise RuntimeError(f"Failed to start shell script: {exc}")
+
+    def _launch_via_ros2_launch(self, context: StackContext, full_path: str, launch_file: str) -> bool:
+        """
+        Launch a ROS 2 launch file using Ros2LaunchParent.
+
+        Args:
+            context: Stack context with workspace information
+            full_path: Full path to the launch file
+            launch_file: Original launch file name (for tracking)
+        """
         # Source the workspace before launching
-        working_dir = os.path.dirname(os.path.dirname(full_launch_file))
+        working_dir = os.path.dirname(os.path.dirname(full_path))
         setup_bash = os.path.join(working_dir, "install", "setup.bash")
         if os.path.exists(setup_bash):
             self._source_workspace(setup_bash)
 
-        self.get_logger().info(f"Starting launch via Ros2LaunchParent: {full_launch_file}")
+        self.get_logger().info(f"Starting launch via Ros2LaunchParent: {full_path}")
 
         try:
             # Create a Ros2LaunchParent instance with empty args
@@ -324,7 +406,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             # Use the async method to launch the file
             async def _do_launch():
                 await launcher.launch_a_launch_file(
-                    launch_file_path=full_launch_file,
+                    launch_file_path=full_path,
                     launch_file_arguments=[],
                     noninteractive=True
                 )
