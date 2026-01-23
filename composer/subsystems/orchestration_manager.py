@@ -23,7 +23,8 @@ from dataclasses import dataclass
 from composer.events import (
     EventBus, EventType, StackAnalyzedEvent, OrchestrationStartedEvent,
     OrchestrationCompletedEvent, OrchestrationFailedEvent, PipelineRequestedEvent,
-    PipelineCompletedEvent, PipelineFailedEvent, RollbackStartedEvent, RollbackCompletedEvent, RollbackFailedEvent
+    PipelineCompletedEvent, PipelineFailedEvent, RollbackStartedEvent, RollbackCompletedEvent,
+    RollbackFailedEvent, ProcessCrashedEvent
 )
 from composer.state.persistence import StatePersistence
 
@@ -160,6 +161,7 @@ class DeploymentOrchestrator:
         self.event_bus.subscribe(EventType.STACK_MERGED, self.handle_stack_merged)
         self.event_bus.subscribe(EventType.PIPELINE_COMPLETED, self.handle_pipeline_completed)
         self.event_bus.subscribe(EventType.PIPELINE_FAILED, self.handle_pipeline_failed)
+        self.event_bus.subscribe(EventType.PROCESS_CRASHED, self.handle_process_crashed)
 
         # Keep track of active orchestrations
         self.active_orchestrations: Dict[str, Dict[str, Any]] = {}
@@ -376,6 +378,44 @@ class DeploymentOrchestrator:
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Error handling pipeline failure: {e}")
+
+    def handle_process_crashed(self, event: ProcessCrashedEvent):
+        """Handle process crash event and trigger rollback if possible."""
+        try:
+            # Don't trigger rollback if we're already in a rollback
+            if self._rollback_in_progress:
+                if self.logger:
+                    self.logger.error(
+                        f"Process crashed during rollback: {event.process_name} - {event.error_message}"
+                    )
+                self._rollback_in_progress = False
+                return
+
+            if self.logger:
+                self.logger.error(
+                    f"Process crashed: {event.process_name} (stack: {event.stack_name}, "
+                    f"exit code: {event.exit_code})"
+                )
+
+            # Mark deployment as failed in active state
+            self.state_persistence.mark_active_deployment_failed(event.error_message)
+
+            # Check if rollback is possible using global active state
+            if self.state_persistence.can_rollback_active():
+                previous_stack = self.state_persistence.get_active_previous_stack()
+                if previous_stack:
+                    prev_name = previous_stack.get("metadata", {}).get("name", "unknown")
+                    self.trigger_rollback(prev_name, previous_stack, event.error_message)
+                else:
+                    if self.logger:
+                        self.logger.warning("No previous stack available for rollback")
+            else:
+                if self.logger:
+                    self.logger.info("Rollback not possible - no previous deployment")
+
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Error handling process crash: {e}")
 
     def _get_stack_name_from_context(self, event: PipelineFailedEvent) -> Optional[str]:
         """Extract stack name from pipeline failure event context."""

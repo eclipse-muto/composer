@@ -73,6 +73,9 @@ class EventType(Enum):
     TWIN_SYNC_COMPLETED = "twin.sync.completed"
     CONFIGURATION_CHANGED = "config.changed"
 
+    # Process Health Events
+    PROCESS_CRASHED = "process.crashed"
+
 
 class BaseComposeEvent:
     """Base class for all composer events."""
@@ -389,18 +392,37 @@ class StackProcessedEvent(BaseComposeEvent):
 
 class TwinUpdateEvent(BaseComposeEvent):
     """Event triggered when a digital twin update is requested."""
-    
+
     def __init__(self, event_type: EventType = None, source_component: str = "twin_integration",
-                 twin_id: str = "", update_type: str = "", 
+                 twin_id: str = "", update_type: str = "",
                  data: Optional[Dict[str, Any]] = None, **kwargs):
         super().__init__(
-            event_type=event_type or EventType.TWIN_UPDATE, 
-            source_component=source_component, 
+            event_type=event_type or EventType.TWIN_UPDATE,
+            source_component=source_component,
             **kwargs
         )
         self.twin_id = twin_id
         self.update_type = update_type
         self.data = data or {}
+
+
+class ProcessCrashedEvent(BaseComposeEvent):
+    """Event triggered when a launched process crashes unexpectedly."""
+
+    def __init__(self, event_type: EventType = None, source_component: str = "launch_plugin",
+                 process_name: str = "", exit_code: int = -1,
+                 stack_name: str = "", error_message: str = "",
+                 process_output: str = "", **kwargs):
+        super().__init__(
+            event_type=event_type or EventType.PROCESS_CRASHED,
+            source_component=source_component,
+            stack_name=stack_name,
+            **kwargs
+        )
+        self.process_name = process_name
+        self.exit_code = exit_code
+        self.error_message = error_message
+        self.process_output = process_output
 
 
 class PipelineEvents:
