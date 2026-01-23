@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from composer.events import (
     EventBus, EventType, StackAnalyzedEvent, OrchestrationStartedEvent,
     OrchestrationCompletedEvent, OrchestrationFailedEvent, PipelineRequestedEvent,
-    PipelineFailedEvent, RollbackStartedEvent, RollbackCompletedEvent, RollbackFailedEvent
+    PipelineCompletedEvent, PipelineFailedEvent, RollbackStartedEvent, RollbackCompletedEvent, RollbackFailedEvent
 )
 from composer.state.persistence import StatePersistence
 
@@ -158,6 +158,7 @@ class DeploymentOrchestrator:
         # Subscribe to events
         self.event_bus.subscribe(EventType.STACK_ANALYZED, self.handle_stack_analyzed)
         self.event_bus.subscribe(EventType.STACK_MERGED, self.handle_stack_merged)
+        self.event_bus.subscribe(EventType.PIPELINE_COMPLETED, self.handle_pipeline_completed)
         self.event_bus.subscribe(EventType.PIPELINE_FAILED, self.handle_pipeline_failed)
 
         # Keep track of active orchestrations
@@ -172,8 +173,17 @@ class DeploymentOrchestrator:
         """Handle analyzed stack by determining orchestration path."""
         try:
             execution_path = self.path_determiner.determine_path(event)
-            
+
             orchestration_id = str(uuid.uuid4())
+
+            # Save current state before deployment (enables rollback)
+            stack_payload = event.stack_payload
+            if stack_payload and not self._rollback_in_progress:
+                stack_name = self._get_stack_name_from_payload(stack_payload)
+                if stack_name:
+                    self.state_persistence.mark_deployment_started(stack_name, stack_payload)
+                    if self.logger:
+                        self.logger.info(f"Saved state for rollback: {stack_name}")
             
             # Store orchestration context
             self.active_orchestrations[orchestration_id] = {
@@ -210,7 +220,72 @@ class DeploymentOrchestrator:
         # This could be used to continue orchestration after stack merging
         if self.logger:
             self.logger.debug("Stack merged event received in orchestrator")
-    
+
+    def _get_stack_name_from_payload(self, stack_payload: Dict[str, Any]) -> Optional[str]:
+        """Extract stack name from stack payload."""
+        if not stack_payload:
+            return None
+        metadata = stack_payload.get("metadata", {})
+        return metadata.get("name") or stack_payload.get("name")
+
+    def handle_pipeline_completed(self, event: PipelineCompletedEvent):
+        """Handle pipeline completion and finalize orchestration."""
+        try:
+            # Find the orchestration for this pipeline
+            orchestration_id = None
+            orchestration_context = None
+            for orch_id, context in self.active_orchestrations.items():
+                if context.get("status") in ("started", "rollback_started"):
+                    orchestration_id = orch_id
+                    orchestration_context = context
+                    break
+
+            if not orchestration_id:
+                if self.logger:
+                    self.logger.debug("No active orchestration found for completed pipeline")
+                return
+
+            # Get stack info from the orchestration context
+            stack_payload = None
+            if orchestration_context.get("event"):
+                stack_payload = getattr(orchestration_context["event"], "stack_payload", None)
+            elif orchestration_context.get("previous_stack"):
+                # This was a rollback
+                stack_payload = orchestration_context["previous_stack"]
+
+            stack_name = self._get_stack_name_from_payload(stack_payload) if stack_payload else None
+
+            # Check if this was a rollback completion
+            is_rollback = orchestration_context.get("status") == "rollback_started"
+
+            if is_rollback and stack_name:
+                # Mark rollback as completed
+                self.state_persistence.mark_rollback_completed(stack_name)
+                if self.logger:
+                    self.logger.info(f"Rollback completed for {stack_name}")
+
+                # Publish rollback completed event
+                rollback_completed = RollbackCompletedEvent(
+                    event_type=EventType.ROLLBACK_COMPLETED,
+                    source_component="deployment_orchestrator",
+                    orchestration_id=orchestration_id,
+                    restored_stack=stack_payload or {},
+                    rollback_duration=0.0
+                )
+                self.event_bus.publish_sync(rollback_completed)
+            elif stack_name:
+                # Normal deployment completed
+                self.state_persistence.mark_deployment_completed(stack_name)
+                if self.logger:
+                    self.logger.info(f"Deployment completed for {stack_name}")
+
+            # Complete the orchestration
+            self.complete_orchestration(orchestration_id, stack_payload or {})
+
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Error handling pipeline completion: {e}")
+
     def complete_orchestration(self, orchestration_id: str, final_stack_state: Dict[str, Any]):
         """Complete an orchestration."""
         try:
