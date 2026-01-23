@@ -176,14 +176,14 @@ class DeploymentOrchestrator:
 
             orchestration_id = str(uuid.uuid4())
 
-            # Save current state before deployment (enables rollback)
+            # Save current state before deployment (enables rollback to previous stack)
             stack_payload = event.stack_payload
             if stack_payload and not self._rollback_in_progress:
-                stack_name = self._get_stack_name_from_payload(stack_payload)
-                if stack_name:
-                    self.state_persistence.mark_deployment_started(stack_name, stack_payload)
-                    if self.logger:
-                        self.logger.info(f"Saved state for rollback: {stack_name}")
+                # Use global active state to enable cross-stack rollback
+                self.state_persistence.mark_active_deployment_started(stack_payload)
+                if self.logger:
+                    stack_name = self._get_stack_name_from_payload(stack_payload)
+                    self.logger.info(f"Saved active state for rollback: {stack_name}")
             
             # Store orchestration context
             self.active_orchestrations[orchestration_id] = {
@@ -258,11 +258,11 @@ class DeploymentOrchestrator:
             # Check if this was a rollback completion
             is_rollback = orchestration_context.get("status") == "rollback_started"
 
-            if is_rollback and stack_name:
-                # Mark rollback as completed
-                self.state_persistence.mark_rollback_completed(stack_name)
+            if is_rollback:
+                # Mark rollback as completed in global active state
+                self.state_persistence.mark_active_rollback_completed()
                 if self.logger:
-                    self.logger.info(f"Rollback completed for {stack_name}")
+                    self.logger.info(f"Rollback completed, restored: {stack_name}")
 
                 # Publish rollback completed event
                 rollback_completed = RollbackCompletedEvent(
@@ -273,11 +273,11 @@ class DeploymentOrchestrator:
                     rollback_duration=0.0
                 )
                 self.event_bus.publish_sync(rollback_completed)
-            elif stack_name:
-                # Normal deployment completed
-                self.state_persistence.mark_deployment_completed(stack_name)
+            else:
+                # Normal deployment completed - update global active state
+                self.state_persistence.mark_active_deployment_completed()
                 if self.logger:
-                    self.logger.info(f"Deployment completed for {stack_name}")
+                    self.logger.info(f"Deployment completed: {stack_name}")
 
             # Complete the orchestration
             self.complete_orchestration(orchestration_id, stack_payload or {})
@@ -346,24 +346,21 @@ class DeploymentOrchestrator:
                     f"Pipeline failed: {event.pipeline_name} at step {event.failure_step}"
                 )
 
-            # Find the orchestration context and get stack name
-            stack_name = self._get_stack_name_from_context(event)
-            if not stack_name:
-                if self.logger:
-                    self.logger.warning("Cannot determine stack name for rollback")
-                return
+            # Mark deployment as failed in active state
+            self.state_persistence.mark_active_deployment_failed(str(event.error_details))
 
-            # Check if rollback is possible
-            if self.state_persistence.can_rollback(stack_name):
-                previous_stack = self.state_persistence.get_previous_stack(stack_name)
+            # Check if rollback is possible using global active state
+            if self.state_persistence.can_rollback_active():
+                previous_stack = self.state_persistence.get_active_previous_stack()
                 if previous_stack:
-                    self.trigger_rollback(stack_name, previous_stack, str(event.error_details))
+                    prev_name = previous_stack.get("metadata", {}).get("name", "unknown")
+                    self.trigger_rollback(prev_name, previous_stack, str(event.error_details))
                 else:
                     if self.logger:
-                        self.logger.warning(f"No previous stack available for rollback: {stack_name}")
+                        self.logger.warning("No previous stack available for rollback")
             else:
                 if self.logger:
-                    self.logger.info(f"Rollback not possible for {stack_name} - no previous version")
+                    self.logger.info("Rollback not possible - no previous deployment")
 
                 # Publish orchestration failed event without rollback
                 failed_event = OrchestrationFailedEvent(

@@ -94,9 +94,14 @@ class StatePersistence:
 
     Stores state files at ~/.muto/state/<stack_name>/state.json
     to enable rollback to previous versions on deployment failure.
+
+    Also maintains a global active deployment state at ~/.muto/state/_active/state.json
+    to track the currently running stack across different stack names, enabling
+    rollback to a different stack when deployment fails.
     """
 
     STATE_FILENAME = "state.json"
+    ACTIVE_STATE_DIR = "_active"
 
     def __init__(self, logger=None):
         self.logger = logger
@@ -365,7 +370,7 @@ class StatePersistence:
         try:
             for entry in os.listdir(self._state_root):
                 entry_path = os.path.join(self._state_root, entry)
-                if os.path.isdir(entry_path):
+                if os.path.isdir(entry_path) and entry != self.ACTIVE_STATE_DIR:
                     state = self.load_state(entry)
                     if state:
                         states[entry] = state
@@ -374,3 +379,232 @@ class StatePersistence:
                 self.logger.warning(f"Failed to list stack states: {e}")
 
         return states
+
+    # =========================================================================
+    # Global Active Deployment State Methods
+    # =========================================================================
+    # These methods track the currently active deployment across ALL stack names,
+    # enabling rollback to a different stack when deployment fails.
+
+    def _get_active_state_path(self) -> str:
+        """Get the path to the global active deployment state file."""
+        return os.path.join(self._state_root, self.ACTIVE_STATE_DIR, self.STATE_FILENAME)
+
+    def load_active_state(self) -> Optional[StackState]:
+        """
+        Load the global active deployment state.
+
+        This tracks which stack is currently running, regardless of stack name.
+
+        Returns:
+            StackState if found, None otherwise
+        """
+        state_path = self._get_active_state_path()
+
+        if not os.path.exists(state_path):
+            if self.logger:
+                self.logger.debug("No active deployment state file found")
+            return None
+
+        try:
+            with open(state_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            state = StackState.from_dict(data)
+            if self.logger:
+                self.logger.debug(f"Loaded active state: {state.stack_name}, status: {state.status}")
+            return state
+        except (OSError, json.JSONDecodeError) as e:
+            if self.logger:
+                self.logger.warning(f"Failed to load active state: {e}")
+            return None
+
+    def save_active_state(self, state: StackState) -> bool:
+        """
+        Save the global active deployment state.
+
+        Args:
+            state: StackState to save
+
+        Returns:
+            True if successful, False otherwise
+        """
+        state_dir = os.path.join(self._state_root, self.ACTIVE_STATE_DIR)
+        state_path = self._get_active_state_path()
+
+        try:
+            os.makedirs(state_dir, exist_ok=True)
+            state.last_updated = datetime.utcnow().isoformat() + "Z"
+
+            with open(state_path, "w", encoding="utf-8") as f:
+                json.dump(state.to_dict(), f, indent=2)
+
+            if self.logger:
+                self.logger.debug(f"Saved active state: {state.stack_name}")
+            return True
+        except OSError as e:
+            if self.logger:
+                self.logger.error(f"Failed to save active state: {e}")
+            return False
+
+    def mark_active_deployment_started(self, next_stack: Dict[str, Any]) -> bool:
+        """
+        Mark a new deployment as started in the global active state.
+
+        Saves the currently running stack as 'previous' to enable rollback
+        to a different stack if the new deployment fails.
+
+        Args:
+            next_stack: The new stack being deployed
+
+        Returns:
+            True if successful, False otherwise
+        """
+        # Load existing active state or create new
+        state = self.load_active_state()
+        if state is None:
+            state = StackState(stack_name="_active")
+
+        # Move current to previous before deployment (this is the key for cross-stack rollback)
+        if state.current_stack:
+            state.previous_stack = copy.deepcopy(state.current_stack)
+            state.previous_version = state.current_version
+            if self.logger:
+                prev_name = state.previous_stack.get("metadata", {}).get("name", "unknown")
+                self.logger.info(f"Saved previous stack for rollback: {prev_name}")
+
+        # Set new deployment info
+        stack_name = self._get_stack_name_from_stack(next_stack)
+        state.stack_id = self._get_stack_id_from_stack(next_stack)
+        state.stack_name = stack_name or "_active"
+        state.current_version = self._get_version_from_stack(next_stack)
+        state.current_stack = copy.deepcopy(next_stack)
+        state.status = DeploymentStatus.DEPLOYING.value
+        state.deployed_at = datetime.utcnow().isoformat() + "Z"
+        state.error_message = ""
+
+        if self.logger:
+            self.logger.info(
+                f"Active deployment started: {stack_name} v{state.current_version}, "
+                f"previous: {state.previous_version}"
+            )
+
+        return self.save_active_state(state)
+
+    def _get_stack_name_from_stack(self, stack: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Extract stack name from stack definition."""
+        if not stack:
+            return None
+        metadata = stack.get("metadata", {})
+        return metadata.get("name") or stack.get("name")
+
+    def mark_active_deployment_completed(self) -> bool:
+        """
+        Mark the active deployment as successfully completed.
+
+        Returns:
+            True if successful, False otherwise
+        """
+        state = self.load_active_state()
+        if state is None:
+            if self.logger:
+                self.logger.warning("No active state found to mark completed")
+            return False
+
+        state.status = DeploymentStatus.RUNNING.value
+        state.error_message = ""
+
+        if self.logger:
+            self.logger.info(f"Active deployment completed: {state.stack_name} v{state.current_version}")
+
+        return self.save_active_state(state)
+
+    def mark_active_deployment_failed(self, error: str = "") -> bool:
+        """
+        Mark the active deployment as failed.
+
+        Args:
+            error: Error message describing the failure
+
+        Returns:
+            True if successful, False otherwise
+        """
+        state = self.load_active_state()
+        if state is None:
+            state = StackState(stack_name="_active")
+
+        state.status = DeploymentStatus.FAILED.value
+        state.error_message = error
+
+        if self.logger:
+            self.logger.error(f"Active deployment failed: {state.stack_name} - {error}")
+
+        return self.save_active_state(state)
+
+    def get_active_previous_stack(self) -> Optional[Dict[str, Any]]:
+        """
+        Get the previous stack from the global active state for rollback.
+
+        This returns the last successfully running stack, regardless of its name.
+
+        Returns:
+            Previous stack definition if available, None otherwise
+        """
+        state = self.load_active_state()
+        if state and state.previous_stack:
+            prev_name = state.previous_stack.get("metadata", {}).get("name", "unknown")
+            if self.logger:
+                self.logger.info(f"Retrieved previous stack for rollback: {prev_name}")
+            return state.previous_stack
+        return None
+
+    def can_rollback_active(self) -> bool:
+        """
+        Check if rollback is possible using the global active state.
+
+        Returns:
+            True if a previous stack exists for rollback
+        """
+        state = self.load_active_state()
+        can_rollback = state is not None and state.previous_stack is not None
+        if self.logger:
+            if can_rollback:
+                prev_name = state.previous_stack.get("metadata", {}).get("name", "unknown")
+                self.logger.debug(f"Rollback available to: {prev_name}")
+            else:
+                self.logger.debug("No previous stack available for rollback")
+        return can_rollback
+
+    def mark_active_rollback_completed(self) -> bool:
+        """
+        Mark that a rollback was completed successfully in the active state.
+
+        Swaps current and previous stacks to reflect the rollback.
+
+        Returns:
+            True if successful, False otherwise
+        """
+        state = self.load_active_state()
+        if state is None:
+            if self.logger:
+                self.logger.warning("No active state found for rollback completion")
+            return False
+
+        # Swap current with previous (rollback)
+        failed_stack = state.current_stack
+        failed_version = state.current_version
+
+        state.current_stack = state.previous_stack
+        state.current_version = state.previous_version
+        state.stack_name = self._get_stack_name_from_stack(state.current_stack) or "_active"
+        state.stack_id = self._get_stack_id_from_stack(state.current_stack)
+        state.previous_stack = failed_stack
+        state.previous_version = failed_version
+        state.status = DeploymentStatus.ROLLED_BACK.value
+        state.rollback_count += 1
+
+        if self.logger:
+            self.logger.info(
+                f"Active rollback completed: restored {state.stack_name} v{state.current_version}"
+            )
+
+        return self.save_active_state(state)
