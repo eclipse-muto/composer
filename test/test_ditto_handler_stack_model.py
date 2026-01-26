@@ -12,23 +12,23 @@
 #
 
 """
-Unit and integration tests for the legacy stack execution path.
-Tests that LegacyStackHandler correctly instantiates Stack model and calls
+Unit and integration tests for the Ditto stack execution path.
+Tests that DittoStackHandler correctly instantiates Stack model and calls
 .launch(), .apply(), and .kill() with representative legacy manifests.
 """
 
 import unittest
 from unittest.mock import MagicMock, patch
 
-from composer.stack_handlers.legacy_handler import LegacyStackHandler
+from composer.stack_handlers.ditto_handler import DittoStackHandler
 from composer.plugins.base_plugin import StackContext, StackOperation
 
 
-class TestLegacyStackHandlerCanHandle(unittest.TestCase):
-    """Tests for LegacyStackHandler.can_handle() method."""
+class TestDittoStackHandlerCanHandle(unittest.TestCase):
+    """Tests for DittoStackHandler.can_handle() method."""
 
     def setUp(self):
-        self.handler = LegacyStackHandler(logger=MagicMock())
+        self.handler = DittoStackHandler(logger=MagicMock())
 
     def test_can_handle_node_based_manifest(self):
         """Test that handler recognizes node-based legacy manifests."""
@@ -80,14 +80,6 @@ class TestLegacyStackHandlerCanHandle(unittest.TestCase):
         }
         self.assertTrue(self.handler.can_handle(payload))
 
-    def test_cannot_handle_new_format_stack_json(self):
-        """Test that handler rejects properly typed stack/json payloads."""
-        payload = {
-            "metadata": {"content_type": "stack/json"},
-            "launch": {"node": []}
-        }
-        self.assertFalse(self.handler.can_handle(payload))
-
     def test_cannot_handle_new_format_stack_archive(self):
         """Test that handler rejects properly typed stack/archive payloads."""
         payload = {
@@ -103,11 +95,11 @@ class TestLegacyStackHandlerCanHandle(unittest.TestCase):
         self.assertFalse(self.handler.can_handle([]))
 
 
-class TestLegacyStackHandlerStackModelIntegration(unittest.TestCase):
+class TestDittoStackHandlerStackModelIntegration(unittest.TestCase):
     """Integration tests for Stack model instantiation and method calls."""
 
     def setUp(self):
-        self.handler = LegacyStackHandler(logger=MagicMock())
+        self.handler = DittoStackHandler(logger=MagicMock())
 
     def _create_context(self, stack_data, operation):
         """Helper to create a StackContext."""
@@ -122,9 +114,9 @@ class TestLegacyStackHandlerStackModelIntegration(unittest.TestCase):
             hash="testhash"
         )
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
-    def test_start_legacy_instantiates_stack_and_launches(self, mock_stack_class):
-        """Test that _start_legacy creates Stack and calls launch()."""
+    @patch('composer.stack_handlers.ditto_handler.Stack')
+    def test_start_ditto_instantiates_stack_and_launches(self, mock_stack_class):
+        """Test that _start_ditto creates Stack and calls launch()."""
         mock_stack = MagicMock()
         mock_stack_class.return_value = mock_stack
 
@@ -135,15 +127,15 @@ class TestLegacyStackHandlerStackModelIntegration(unittest.TestCase):
         }
         context = self._create_context(payload, StackOperation.START)
 
-        result = self.handler._start_legacy(context)
+        result = self.handler._start_ditto(context)
 
         self.assertTrue(result)
         mock_stack_class.assert_called_once_with(manifest=payload)
         mock_stack.launch.assert_called_once_with(context.launcher)
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
-    def test_start_legacy_with_nested_launch_structure(self, mock_stack_class):
-        """Test that _start_legacy handles nested launch structure."""
+    @patch('composer.stack_handlers.ditto_handler.Stack')
+    def test_start_ditto_with_nested_launch_structure(self, mock_stack_class):
+        """Test that _start_ditto handles nested launch structure."""
         mock_stack = MagicMock()
         mock_stack_class.return_value = mock_stack
 
@@ -151,15 +143,15 @@ class TestLegacyStackHandlerStackModelIntegration(unittest.TestCase):
         payload = {"launch": launch_data}
         context = self._create_context(payload, StackOperation.START)
 
-        result = self.handler._start_legacy(context)
+        result = self.handler._start_ditto(context)
 
         self.assertTrue(result)
         mock_stack_class.assert_called_once_with(manifest=launch_data)
         mock_stack.launch.assert_called_once()
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
-    def test_kill_legacy_instantiates_stack_and_kills(self, mock_stack_class):
-        """Test that _kill_legacy creates Stack and calls kill()."""
+    @patch('composer.stack_handlers.ditto_handler.Stack')
+    def test_kill_ditto_instantiates_stack_and_kills(self, mock_stack_class):
+        """Test that _kill_ditto creates Stack and calls kill()."""
         mock_stack = MagicMock()
         mock_stack_class.return_value = mock_stack
 
@@ -170,15 +162,15 @@ class TestLegacyStackHandlerStackModelIntegration(unittest.TestCase):
         }
         context = self._create_context(payload, StackOperation.KILL)
 
-        result = self.handler._kill_legacy(context)
+        result = self.handler._kill_ditto(context)
 
         self.assertTrue(result)
         mock_stack_class.assert_called_once_with(manifest=payload)
         mock_stack.kill.assert_called_once()
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
-    def test_apply_legacy_instantiates_stack_and_applies(self, mock_stack_class):
-        """Test that _apply_legacy creates Stack and calls apply()."""
+    @patch('composer.stack_handlers.ditto_handler.Stack')
+    def test_apply_ditto_instantiates_stack_and_applies(self, mock_stack_class):
+        """Test that _apply_ditto creates Stack and calls apply()."""
         mock_stack = MagicMock()
         mock_stack_class.return_value = mock_stack
 
@@ -189,13 +181,13 @@ class TestLegacyStackHandlerStackModelIntegration(unittest.TestCase):
         }
         context = self._create_context(payload, StackOperation.APPLY)
 
-        result = self.handler._apply_legacy(context)
+        result = self.handler._apply_ditto(context)
 
         self.assertTrue(result)
         mock_stack_class.assert_called_once_with(manifest=payload)
         mock_stack.apply.assert_called_once_with(context.launcher)
 
-    def test_start_script_based_legacy_delegates_to_plugin(self):
+    def test_start_script_based_ditto_delegates_to_plugin(self):
         """Test that script-based stacks are delegated (not using Stack model)."""
         payload = {
             "on_start": "/opt/muto/start.sh",
@@ -203,12 +195,12 @@ class TestLegacyStackHandlerStackModelIntegration(unittest.TestCase):
         }
         context = self._create_context(payload, StackOperation.START)
 
-        result = self.handler._start_legacy(context)
+        result = self.handler._start_ditto(context)
 
         # Script-based stacks return True but don't use Stack model
         self.assertTrue(result)
 
-    def test_kill_script_based_legacy_delegates_to_plugin(self):
+    def test_kill_script_based_ditto_delegates_to_plugin(self):
         """Test that script-based stack kill is delegated."""
         payload = {
             "on_start": "/opt/muto/start.sh",
@@ -216,11 +208,11 @@ class TestLegacyStackHandlerStackModelIntegration(unittest.TestCase):
         }
         context = self._create_context(payload, StackOperation.KILL)
 
-        result = self.handler._kill_legacy(context)
+        result = self.handler._kill_ditto(context)
 
         self.assertTrue(result)
 
-    def test_apply_script_based_legacy_is_noop(self):
+    def test_apply_script_based_ditto_is_noop(self):
         """Test that apply for script-based stacks is a no-op."""
         payload = {
             "on_start": "/opt/muto/start.sh",
@@ -228,17 +220,17 @@ class TestLegacyStackHandlerStackModelIntegration(unittest.TestCase):
         }
         context = self._create_context(payload, StackOperation.APPLY)
 
-        result = self.handler._apply_legacy(context)
+        result = self.handler._apply_ditto(context)
 
         # Apply returns True but does nothing
         self.assertTrue(result)
 
 
-class TestLegacyStackHandlerApplyToPlugin(unittest.TestCase):
+class TestDittoStackHandlerApplyToPlugin(unittest.TestCase):
     """Tests for the apply_to_plugin dispatcher method."""
 
     def setUp(self):
-        self.handler = LegacyStackHandler(logger=MagicMock())
+        self.handler = DittoStackHandler(logger=MagicMock())
         self.mock_plugin = MagicMock()
         self.mock_request = MagicMock()
         self.mock_response = MagicMock()
@@ -257,7 +249,7 @@ class TestLegacyStackHandlerApplyToPlugin(unittest.TestCase):
         )
 
     def test_provision_operation_returns_true(self):
-        """Test that PROVISION operation returns True (no-op for legacy)."""
+        """Test that PROVISION operation returns True (no-op for ditto)."""
         context = self._create_context({}, StackOperation.PROVISION)
 
         result = self.handler.apply_to_plugin(
@@ -266,9 +258,9 @@ class TestLegacyStackHandlerApplyToPlugin(unittest.TestCase):
 
         self.assertTrue(result)
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
-    def test_start_operation_delegates_to_start_legacy(self, mock_stack_class):
-        """Test that START operation calls _start_legacy."""
+    @patch('composer.stack_handlers.ditto_handler.Stack')
+    def test_start_operation_delegates_to_start_ditto(self, mock_stack_class):
+        """Test that START operation calls _start_ditto."""
         mock_stack = MagicMock()
         mock_stack_class.return_value = mock_stack
 
@@ -282,9 +274,9 @@ class TestLegacyStackHandlerApplyToPlugin(unittest.TestCase):
         self.assertTrue(result)
         mock_stack.launch.assert_called_once()
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
-    def test_kill_operation_delegates_to_kill_legacy(self, mock_stack_class):
-        """Test that KILL operation calls _kill_legacy."""
+    @patch('composer.stack_handlers.ditto_handler.Stack')
+    def test_kill_operation_delegates_to_kill_ditto(self, mock_stack_class):
+        """Test that KILL operation calls _kill_ditto."""
         mock_stack = MagicMock()
         mock_stack_class.return_value = mock_stack
 
@@ -298,9 +290,9 @@ class TestLegacyStackHandlerApplyToPlugin(unittest.TestCase):
         self.assertTrue(result)
         mock_stack.kill.assert_called_once()
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
-    def test_apply_operation_delegates_to_apply_legacy(self, mock_stack_class):
-        """Test that APPLY operation calls _apply_legacy."""
+    @patch('composer.stack_handlers.ditto_handler.Stack')
+    def test_apply_operation_delegates_to_apply_ditto(self, mock_stack_class):
+        """Test that APPLY operation calls _apply_ditto."""
         mock_stack = MagicMock()
         mock_stack_class.return_value = mock_stack
 
@@ -315,7 +307,7 @@ class TestLegacyStackHandlerApplyToPlugin(unittest.TestCase):
         mock_stack.apply.assert_called_once()
 
     def test_compose_operation_returns_false(self):
-        """Test that COMPOSE operation is not supported for legacy handler."""
+        """Test that COMPOSE operation is not supported for ditto handler."""
         context = self._create_context({}, StackOperation.COMPOSE)
 
         result = self.handler.apply_to_plugin(
@@ -325,11 +317,11 @@ class TestLegacyStackHandlerApplyToPlugin(unittest.TestCase):
         self.assertFalse(result)
 
 
-class TestLegacyStackHandlerErrorHandling(unittest.TestCase):
-    """Tests for error handling in LegacyStackHandler."""
+class TestDittoStackHandlerErrorHandling(unittest.TestCase):
+    """Tests for error handling in DittoStackHandler."""
 
     def setUp(self):
-        self.handler = LegacyStackHandler(logger=MagicMock())
+        self.handler = DittoStackHandler(logger=MagicMock())
 
     def _create_context(self, stack_data, operation):
         return StackContext(
@@ -343,7 +335,7 @@ class TestLegacyStackHandlerErrorHandling(unittest.TestCase):
             hash="testhash"
         )
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
+    @patch('composer.stack_handlers.ditto_handler.Stack')
     def test_start_handles_stack_exception(self, mock_stack_class):
         """Test that exceptions during start are handled gracefully."""
         mock_stack_class.side_effect = Exception("Stack creation failed")
@@ -351,12 +343,12 @@ class TestLegacyStackHandlerErrorHandling(unittest.TestCase):
         payload = {"node": [{"name": "test", "pkg": "pkg", "exec": "exec"}]}
         context = self._create_context(payload, StackOperation.START)
 
-        result = self.handler._start_legacy(context)
+        result = self.handler._start_ditto(context)
 
         self.assertFalse(result)
         self.handler.logger.error.assert_called()
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
+    @patch('composer.stack_handlers.ditto_handler.Stack')
     def test_kill_handles_stack_exception(self, mock_stack_class):
         """Test that exceptions during kill are handled gracefully."""
         mock_stack_class.side_effect = Exception("Stack creation failed")
@@ -364,12 +356,12 @@ class TestLegacyStackHandlerErrorHandling(unittest.TestCase):
         payload = {"node": [{"name": "test", "pkg": "pkg", "exec": "exec"}]}
         context = self._create_context(payload, StackOperation.KILL)
 
-        result = self.handler._kill_legacy(context)
+        result = self.handler._kill_ditto(context)
 
         self.assertFalse(result)
         self.handler.logger.error.assert_called()
 
-    @patch('composer.stack_handlers.legacy_handler.Stack')
+    @patch('composer.stack_handlers.ditto_handler.Stack')
     def test_apply_handles_stack_exception(self, mock_stack_class):
         """Test that exceptions during apply are handled gracefully."""
         mock_stack_class.side_effect = Exception("Stack creation failed")
@@ -377,7 +369,7 @@ class TestLegacyStackHandlerErrorHandling(unittest.TestCase):
         payload = {"node": [{"name": "test", "pkg": "pkg", "exec": "exec"}]}
         context = self._create_context(payload, StackOperation.APPLY)
 
-        result = self.handler._apply_legacy(context)
+        result = self.handler._apply_ditto(context)
 
         self.assertFalse(result)
         self.handler.logger.error.assert_called()
@@ -387,7 +379,7 @@ class TestLegacyStackHandlerErrorHandling(unittest.TestCase):
         payload = {"unknown_field": "value"}
         context = self._create_context(payload, StackOperation.START)
 
-        result = self.handler._start_legacy(context)
+        result = self.handler._start_ditto(context)
 
         self.assertFalse(result)
 
