@@ -16,18 +16,45 @@ import json
 import subprocess
 import asyncio
 import atexit
-from typing import Dict
+from typing import Dict, Union, Optional
 import rclpy
 from rclpy.callback_groups import ReentrantCallbackGroup
+from std_msgs.msg import String
 from muto_msgs.msg import StackManifest
 from muto_msgs.srv import LaunchPlugin, CoreTwin
 from composer.workflow.launcher import Ros2LaunchParent
-from composer.plugins.provision_plugin import WORKSPACES_PATH
+from composer.utils.paths import WORKSPACES_PATH
 from composer.utils.stack_parser import StackParser
 from .base_plugin import BasePlugin, StackContext, StackOperation
 
 
+class ShellProcessWrapper:
+    """
+    Wrapper for subprocess.Popen to provide a compatible interface with Ros2LaunchParent
+    for lifecycle management in _managed_launchers dictionary.
+    """
+
+    def __init__(self, process: subprocess.Popen, script_path: str):
+        self.process = process
+        self.script_path = script_path
+
+    def kill(self) -> None:
+        """Terminate the shell process and its process group."""
+        if self.process.poll() is None:  # Process is still running
+            try:
+                # Kill the entire process group (handles child processes)
+                os.killpg(os.getpgid(self.process.pid), 9)
+            except (ProcessLookupError, OSError):
+                # Process already terminated
+                pass
+            finally:
+                self.process.wait()
+
+
 class MutoDefaultLaunchPlugin(BasePlugin):
+    # Process health monitoring interval in seconds
+    PROCESS_MONITOR_INTERVAL = 1.0
+
     def __init__(self):
         super().__init__("launch_plugin")
 
@@ -45,8 +72,19 @@ class MutoDefaultLaunchPlugin(BasePlugin):
 
         self.stack_parser = StackParser(self.get_logger())
 
-        # Track managed Ros2LaunchParent instances by launch file for consistent lifecycle management
-        self._managed_launchers: Dict[str, Ros2LaunchParent] = dict()
+        # Track managed launchers by launch file for consistent lifecycle management
+        # Supports both Ros2LaunchParent (for .launch.py) and ShellProcessWrapper (for .sh)
+        self._managed_launchers: Dict[str, Union[Ros2LaunchParent, ShellProcessWrapper]] = dict()
+
+        # Track stack name associated with each launcher for crash reporting
+        self._launcher_stack_names: Dict[str, str] = {}
+
+        # Publisher for process crash notifications
+        self._crash_publisher = self.create_publisher(
+            String,
+            "launch_plugin/process_crashed",
+            10
+        )
 
         # Ensure a valid asyncio loop exists to avoid 'There is no current event loop' warnings
         try:
@@ -56,6 +94,13 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             asyncio.set_event_loop(self.async_loop)
         self.timer = self.create_timer(
             0.1, self.run_async_loop, callback_group=ReentrantCallbackGroup()
+        )
+
+        # Background process health monitor timer
+        self._process_monitor_timer = self.create_timer(
+            self.PROCESS_MONITOR_INTERVAL,
+            self._monitor_processes,
+            callback_group=ReentrantCallbackGroup()
         )
 
         atexit.register(self._cleanup_managed_launchers)
@@ -296,10 +341,11 @@ class MutoDefaultLaunchPlugin(BasePlugin):
 
     def _launch_via_ros2(self, context: StackContext, launch_file: str) -> bool:
         """
-        Launch the given launch file using Ros2LaunchParent.
+        Launch the given file using appropriate method based on file type.
 
-        All launches go through Ros2LaunchParent to ensure consistent lifecycle
-        management and node tracking.
+        Supports:
+        - ROS 2 launch files (.launch.py, .launch.xml, .launch.yaml) via Ros2LaunchParent
+        - Shell scripts (.sh) via subprocess
         """
         self._terminate_launch_process(launch_file)
 
@@ -309,13 +355,85 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             self.get_logger().error(f"Launch file not found: {full_launch_file}")
             return False
 
+        # Determine launch method based on file extension
+        if full_launch_file.endswith('.sh'):
+            return self._launch_via_shell(context, full_launch_file, launch_file)
+        else:
+            return self._launch_via_ros2_launch(context, full_launch_file, launch_file)
+
+    def _launch_via_shell(self, context: StackContext, full_path: str, launch_file: str) -> bool:
+        """
+        Launch a shell script as a subprocess with background health monitoring.
+
+        The process is started immediately and monitored by a background timer.
+        If the process crashes, a notification is published to the crash topic.
+
+        Args:
+            context: Stack context with workspace information
+            full_path: Full path to the shell script
+            launch_file: Original launch file name (for tracking)
+
+        Returns:
+            True if process started successfully, False otherwise
+        """
+        self.get_logger().info(f"Starting shell script: {full_path}")
+
+        # Source workspace setup.bash if available
+        workspace_dir = context.workspace_path
+        setup_bash = os.path.join(workspace_dir, "install", "setup.bash")
+
+        try:
+            # Build the command - source setup.bash if available, then run script
+            if os.path.exists(setup_bash):
+                command = f"source {setup_bash} && bash {full_path}"
+            else:
+                command = f"bash {full_path}"
+
+            # Start the process in the background
+            process = subprocess.Popen(
+                command,
+                shell=True,
+                executable="/bin/bash",
+                cwd=workspace_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                preexec_fn=os.setsid  # Create new process group for cleanup
+            )
+
+            # Store process for lifecycle management (using a wrapper object)
+            wrapper = ShellProcessWrapper(process, full_path)
+            self._managed_launchers[launch_file] = wrapper
+
+            # Track stack name for crash reporting
+            stack_name = getattr(context, 'stack_name', None) or os.path.basename(workspace_dir)
+            self._launcher_stack_names[launch_file] = stack_name
+
+            self.get_logger().info(
+                f"Shell script launched with PID {process.pid}: {launch_file} (stack: {stack_name})"
+            )
+            self.get_logger().info("Process will be monitored by background watchdog")
+            return True
+
+        except Exception as exc:
+            self.get_logger().error(f"Failed to start shell script: {exc}")
+            raise RuntimeError(f"Failed to start shell script: {exc}")
+
+    def _launch_via_ros2_launch(self, context: StackContext, full_path: str, launch_file: str) -> bool:
+        """
+        Launch a ROS 2 launch file using Ros2LaunchParent.
+
+        Args:
+            context: Stack context with workspace information
+            full_path: Full path to the launch file
+            launch_file: Original launch file name (for tracking)
+        """
         # Source the workspace before launching
-        working_dir = os.path.dirname(os.path.dirname(full_launch_file))
+        working_dir = os.path.dirname(os.path.dirname(full_path))
         setup_bash = os.path.join(working_dir, "install", "setup.bash")
         if os.path.exists(setup_bash):
             self._source_workspace(setup_bash)
 
-        self.get_logger().info(f"Starting launch via Ros2LaunchParent: {full_launch_file}")
+        self.get_logger().info(f"Starting launch via Ros2LaunchParent: {full_path}")
 
         try:
             # Create a Ros2LaunchParent instance with empty args
@@ -324,7 +442,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             # Use the async method to launch the file
             async def _do_launch():
                 await launcher.launch_a_launch_file(
-                    launch_file_path=full_launch_file,
+                    launch_file_path=full_path,
                     launch_file_arguments=[],
                     noninteractive=True
                 )
@@ -406,6 +524,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
                 self.get_logger().warning(f"Error terminating launcher for {launch_file}: {e}")
             finally:
                 self._managed_launchers.pop(launch_file, None)
+                self._launcher_stack_names.pop(launch_file, None)
 
     def _cleanup_managed_launchers(self) -> None:
         """Clean up all managed launchers on exit."""
@@ -416,7 +535,76 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             except Exception as e:
                 self.get_logger().warning(f"Error cleaning up launcher {launch_file}: {e}")
         self._managed_launchers.clear()
+        self._launcher_stack_names.clear()
 
+    def _monitor_processes(self) -> None:
+        """
+        Background timer callback to monitor managed processes for crashes.
+
+        Checks all managed shell processes and publishes a crash notification
+        if any have exited unexpectedly.
+        """
+        for launch_file in list(self._managed_launchers.keys()):
+            launcher = self._managed_launchers.get(launch_file)
+            if launcher is None:
+                continue
+
+            # Only check ShellProcessWrapper instances (shell scripts)
+            if isinstance(launcher, ShellProcessWrapper):
+                exit_code = launcher.process.poll()
+                if exit_code is not None:
+                    # Process has exited - check if it was an unexpected crash
+                    stack_name = self._launcher_stack_names.get(launch_file, "unknown")
+
+                    # Try to capture any output for debugging
+                    stdout_output = ""
+                    try:
+                        if launcher.process.stdout:
+                            stdout_output = launcher.process.stdout.read().decode('utf-8', errors='replace')
+                    except Exception:
+                        pass
+
+                    self.get_logger().error(
+                        f"Process {launch_file} crashed unexpectedly (exit code {exit_code})"
+                    )
+
+                    # Publish crash notification
+                    self._publish_crash_notification(
+                        process_name=launch_file,
+                        exit_code=exit_code,
+                        stack_name=stack_name,
+                        error_message=f"Process exited with code {exit_code}",
+                        process_output=stdout_output[-500:] if stdout_output else ""
+                    )
+
+                    # Remove from managed launchers
+                    self._managed_launchers.pop(launch_file, None)
+                    self._launcher_stack_names.pop(launch_file, None)
+
+    def _publish_crash_notification(
+        self,
+        process_name: str,
+        exit_code: int,
+        stack_name: str,
+        error_message: str,
+        process_output: str = ""
+    ) -> None:
+        """Publish a process crash notification to the crash topic."""
+        crash_data = {
+            "process_name": process_name,
+            "exit_code": exit_code,
+            "stack_name": stack_name,
+            "error_message": error_message,
+            "process_output": process_output
+        }
+
+        msg = String()
+        msg.data = json.dumps(crash_data)
+        self._crash_publisher.publish(msg)
+
+        self.get_logger().info(
+            f"Published crash notification for {process_name} (stack: {stack_name})"
+        )
 
 
 def main():

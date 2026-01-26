@@ -11,16 +11,10 @@
 #   Composiv.ai - initial API and implementation
 #
 
-import os
-
 import rclpy
 from muto_msgs.srv import ProvisionPlugin
 from .base_plugin import BasePlugin, StackOperation
-
-
-
-WORKSPACES_PATH = os.path.join("/tmp", "muto", "muto_workspaces")
-ARTIFACT_STATE_FILE = ".muto_artifact.json"
+from composer.utils.paths import WORKSPACES_PATH, ARTIFACT_STATE_FILE
 
 
 class MutoProvisionPlugin(BasePlugin):

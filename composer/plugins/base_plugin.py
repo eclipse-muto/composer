@@ -23,10 +23,8 @@ from threading import Event
 import rclpy
 from rclpy.node import Node
 from composer.utils.stack_parser import StackParser
+from composer.utils.paths import WORKSPACES_PATH, ARTIFACT_STATE_FILE
 from muto_msgs.srv import CoreTwin
-
-WORKSPACES_PATH = os.path.join("/tmp", "muto", "muto_workspaces")
-ARTIFACT_STATE_FILE = ".muto_artifact.json"
 
 
 class StackOperation(Enum):

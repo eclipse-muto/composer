@@ -23,7 +23,8 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 from muto_msgs.msg import MutoAction
-from composer.events import EventBus, EventType, StackRequestEvent
+from rclpy.callback_groups import ReentrantCallbackGroup
+from composer.events import EventBus, EventType, StackRequestEvent, ProcessCrashedEvent
 from composer.subsystems.message_handler import MessageHandler
 from composer.subsystems.stack_manager import StackManager
 from composer.subsystems.orchestration_manager import OrchestrationManager
@@ -119,9 +120,17 @@ class MutoComposer(Node):
         try:
             # Note: MutoAction subscription is now handled by MessageHandler subsystem
             # to avoid duplicate processing
-            
+
+            # Subscribe to process crash notifications from launch_plugin
+            self._crash_subscription = self.create_subscription(
+                String,
+                "launch_plugin/process_crashed",
+                self._handle_process_crash_notification,
+                10
+            )
+
             self.get_logger().info("ROS 2 interfaces set up successfully")
-            
+
         except Exception as e:
             self.get_logger().error(f"Failed to set up ROS interfaces: {e}")
             raise
@@ -222,12 +231,44 @@ class MutoComposer(Node):
         """Handle pipeline failure for error recovery."""
         try:
             self.get_logger().error(f"Pipeline failed: {event.pipeline_name} - {event.error_details}")
-            
+
             # Could implement retry logic or error reporting here
-            
+
         except Exception as e:
             self.get_logger().error(f"Error handling pipeline failure: {e}")
-    
+
+    def _handle_process_crash_notification(self, msg: String):
+        """Handle process crash notification from launch_plugin."""
+        try:
+            crash_data = json.loads(msg.data)
+
+            self.get_logger().error(
+                f"Process crashed: {crash_data.get('process_name', 'unknown')} "
+                f"(stack: {crash_data.get('stack_name', 'unknown')}, "
+                f"exit code: {crash_data.get('exit_code', -1)})"
+            )
+
+            # Create and publish ProcessCrashedEvent for internal handling
+            crash_event = ProcessCrashedEvent(
+                event_type=EventType.PROCESS_CRASHED,
+                source_component="muto_composer",
+                process_name=crash_data.get("process_name", ""),
+                exit_code=crash_data.get("exit_code", -1),
+                stack_name=crash_data.get("stack_name", ""),
+                error_message=crash_data.get("error_message", ""),
+                process_output=crash_data.get("process_output", "")
+            )
+
+            # Publish to event bus for subsystem processing (triggers rollback)
+            self.event_bus.publish_sync(crash_event)
+
+            self.get_logger().info("ProcessCrashedEvent published, rollback may be triggered")
+
+        except json.JSONDecodeError as e:
+            self.get_logger().error(f"Invalid JSON in crash notification: {e}")
+        except Exception as e:
+            self.get_logger().error(f"Error handling process crash notification: {e}")
+
     # Legacy interface methods for backward compatibility
     def pipeline_execute(self, pipeline_name: str, additional_context: Optional[Dict] = None, 
                         stack_manifest: Optional[Dict] = None):
