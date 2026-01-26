@@ -11,11 +11,14 @@
 #   Composiv.ai - initial API and implementation
 #
 
+import logging
 import os
 import composer.model.param as param
 from lifecycle_msgs.msg import Transition, State
 from lifecycle_msgs.srv import GetState, GetAvailableTransitions, GetAvailableStates, ChangeState
 import rclpy
+
+logger = logging.getLogger(__name__)
 
 class Node:
     def __init__(self, stack, manifest={}, container=None):
@@ -81,8 +84,7 @@ class Node:
                 rclpy.spin_until_future_complete(temporary_node, future, timeout_sec=3.0)
             temporary_node.destroy_node()
         else:
-            print(f"{self.name} is Not a managed node")
-
+            logger.warning(f"{self.name} is Not a managed node")
 
     def get_state(self):
         if self.lifecycle:
@@ -96,7 +98,7 @@ class Node:
             temporary_node.destroy_node()
             return future.result()
         else:
-            print(f"{self.name} is Not a managed node")
+            logger.warning(f"{self.name} is Not a managed node")
 
     def get_available_states(self):
         if self.lifecycle:
@@ -112,7 +114,7 @@ class Node:
             temporary_node.destroy_node()
             return response.available_states
         else:
-            print(f"{self.name} is Not a managed node")
+            logger.warning(f"{self.name} is Not a managed node")
 
 
     def __eq__(self, other):

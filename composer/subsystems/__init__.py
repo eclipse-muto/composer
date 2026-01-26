@@ -21,11 +21,16 @@ from .stack_manager import StackManager
 from .orchestration_manager import OrchestrationManager
 from .pipeline_engine import PipelineEngine
 from .digital_twin_integration import DigitalTwinIntegration
+from .watchdog import ComposerWatchdog, HealthStatus, SubsystemHealth, SystemHealthReport
 
 __all__ = [
     "MessageHandler",
-    "StackManager", 
+    "StackManager",
     "OrchestrationManager",
     "PipelineEngine",
-    "DigitalTwinIntegration"
+    "DigitalTwinIntegration",
+    "ComposerWatchdog",
+    "HealthStatus",
+    "SubsystemHealth",
+    "SystemHealthReport",
 ]

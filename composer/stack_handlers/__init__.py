@@ -11,12 +11,15 @@
 #   Composiv.ai - initial API and implementation
 #
 
-from .base_plugin import StackTypeHandler, BasePlugin, StackContext, StackOperation
+from .registry import StackTypeRegistry
+from .json_handler import JsonStackHandler
+from .archive_handler import ArchiveStackHandler
+from .ditto_handler import DittoStackHandler
 
 __all__ = [
 
-    'StackTypeHandler',
-    'BasePlugin',
-    'StackContext',
-    'StackOperation',
+    'StackTypeRegistry',
+    'JsonStackHandler',
+    'ArchiveStackHandler',
+    'DittoStackHandler',
 ]

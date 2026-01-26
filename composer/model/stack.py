@@ -11,6 +11,7 @@
 #   Composiv.ai - initial API and implementation
 #
 
+import logging
 import subprocess
 import os
 import re
@@ -24,6 +25,8 @@ from launch_ros.actions import Node, LoadComposableNodes
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
 from ament_index_python.packages import get_package_share_directory
+
+logger = logging.getLogger(__name__)
 
 NOACTION = 'none'  # possibly PARAMACTION sometime in the future
 STARTACTION = 'start'
@@ -62,10 +65,6 @@ class Stack():
 
         self.stack = []
         referenced_stacks = self.manifest.get('stack', [])
-        # for stackRef in referenced_stacks:
-            # stackDef = self.edge_device.stack(stackRef['thingId'])  # TODO: Replace with the twin service call
-            # stack = Stack(stackDef, self)
-            # self.stack.append(stack)
 
         self.node = []
         for nDef in self.manifest.get('node', []):
@@ -131,7 +130,7 @@ class Stack():
                 s.flatten_nodes(list)
             return list
         except Exception as e:
-            print(f'Exception occured in flatten_nodes: {e}')
+            logger.error(f'Exception occured in flatten_nodes: {e}')
 
     def flatten_composable(self, list):
         """Flatten the nested structure of composable nodes in the stack.
@@ -150,7 +149,7 @@ class Stack():
                 s.flatten_composable(list)
             return list
         except Exception as e:
-            print(f'Exception occured in flatten_composable: {e}')
+            logger.error(f'Exception occured in flatten_composable: {e}')
 
     def calculate_ros_params_differences(self, current, other):
         """Calculate differences in ROS parameters between nodes of the current stack and another stack.
@@ -350,7 +349,7 @@ class Stack():
 
     def change_params_at_runtime(self, param_differences):
         """Change parameters at runtime based on differences.
-        ### TODO: replace with set param service call
+
         Args:
             param_differences (dict): Dictionary containing parameter differences.
         """
@@ -360,8 +359,7 @@ class Stack():
                     subprocess.run(['ros2', 'param', 'set', str(key[0]), str(
                         val[i]['key']), str(val[i]['in_node1'])])
         except Exception as e:
-            print(
-                f'Exception occurred while changing parameters at runtime: {e}')
+            logger.error(f'Exception occurred while changing parameters at runtime: {e}')
 
     def toShallowManifest(self):
         manifest = {"name": self.name,
@@ -431,7 +429,7 @@ class Stack():
         node_desc = []
         for cn in container.nodes:
             if cn.action == LOADACTION:
-                print(f"LOADING {cn.namespace}/{cn.name}")
+                logger.debug(f"LOADING {cn.namespace}/{cn.name}")
                 node_desc.append(ComposableNode(
                     package=cn.pkg,
                     name=cn.name,
@@ -519,7 +517,7 @@ class Stack():
             self.handle_regular_nodes(self.node, launch_description, launcher)
 
         except Exception as e:
-            print(f'Stack launching ended with exception: {e}')
+            logger.error(f'Stack launching ended with exception: {e}')
 
         launcher.start(launch_description)
         all_nodes = self.node + [cn for c in self.composable for cn in c.nodes]
@@ -575,7 +573,7 @@ class Stack():
             except KeyError:
                 raise Exception(f"{var} does not exist", 'param')
             except Exception as e:
-                print(f'Exception occurred: {e}')
+                logger.error(f'Exception occurred: {e}')
 
         return result
 

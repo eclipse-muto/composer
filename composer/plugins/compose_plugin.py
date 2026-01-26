@@ -12,15 +12,14 @@
 #
 
 import json
+from .base_plugin import BasePlugin, StackOperation
+
 import rclpy
-from rclpy.node import Node
 from std_msgs.msg import String
 from muto_msgs.msg import StackManifest
 from muto_msgs.srv import ComposePlugin
-from composer.model.stack import Stack
 
-
-class MutoDefaultComposePlugin(Node):
+class MutoDefaultComposePlugin(BasePlugin):
     def __init__(self):
         super().__init__("compose_plugin")
 
@@ -35,6 +34,7 @@ class MutoDefaultComposePlugin(Node):
             ComposePlugin, "muto_compose", self.handle_compose
         )
 
+
     def handle_raw_stack(self, stack_msg: String):
         """
         Callback to handle incoming raw stack messages.
@@ -46,6 +46,7 @@ class MutoDefaultComposePlugin(Node):
         except json.JSONDecodeError as e:
             self.get_logger().error(f"Failed to parse raw stack JSON: {e}")
 
+
     def handle_compose(
         self, request: ComposePlugin.Request, response: ComposePlugin.Response
     ):
@@ -53,31 +54,47 @@ class MutoDefaultComposePlugin(Node):
         Service handler for composing the stack.
         Publishes the composed stack if 'start' is True.
         """
+
         try:
-            if request.start:
-                if self.incoming_stack:
-                    self.publish_composed_stack()
-                    response.success = True
-                    response.err_msg = ""
-                else:
-                    response.success = True
-                    response.err_msg = "No default stack."
-                    self.get_logger().warn("No stack to compose.")
-            else:
+            # Check if this is a kill action - kill actions pass through compose without validation
+            is_kill_action = False
+            if request.input.current.stack:
+                try:
+                    stack_data = json.loads(request.input.current.stack)
+                    # Kill actions have stackId in value key or at top level, not a full manifest
+                    if stack_data.get("value", {}).get("stackId") or (
+                        stack_data.get("path", "").endswith("/kill") and not stack_data.get("launch")
+                    ):
+                        is_kill_action = True
+                except json.JSONDecodeError:
+                    pass
+
+            if is_kill_action:
+                # Kill actions don't need compose validation - just pass through
+                self.get_logger().info("Kill action detected - skipping compose validation")
+                response.success = True
+                response.output.current = request.input.current
+                return response
+
+            handler, context = self.find_stack_handler(request)
+            if not handler or not context:
                 response.success = False
-                response.err_msg = "Start flag not set in request."
-                self.get_logger().warn("Start flag not set in compose request.")
+                response.err_msg = "No valid handler or context found."
+                self.get_logger().warn("No valid handler or context found.")
+            else:
+                context.operation = StackOperation.COMPOSE
+                handler.apply_to_plugin(self, context, request, response)
+                response.success = True
+
         except Exception as e:
             response.success = False
             response.err_msg = str(e)
             self.get_logger().error(f"Exception during compose: {e}")
-        
-        ## Simply chain the input to putput for now..
-        ## This plugin should be able to determine how 
-        ## the pipeline will continue to work i.e. apply policies
-        ## and transformations to the stack.
+
         response.output.current = request.input.current
         return response
+
+
 
     def publish_composed_stack(self):
         """

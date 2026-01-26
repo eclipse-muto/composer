@@ -27,8 +27,10 @@ from composer.model.stack import Stack
 from composer.utils.stack_parser import create_stack_parser
 from composer.events import (
     EventBus, EventType, StackRequestEvent, StackAnalyzedEvent,
-    StackMergedEvent, StackTransformedEvent, StackProcessedEvent
+    StackMergedEvent, StackTransformedEvent, StackProcessedEvent,
+    OrchestrationFailedEvent
 )
+from composer.state.persistence import StatePersistence
 
 
 class StackType(Enum):
@@ -69,41 +71,54 @@ class StackTransition:
 
 
 class StackStateManager:
-    """Manages current and next stack states."""
-    
+    """Manages current and next stack states with persistent storage."""
+
     def __init__(self, event_bus: EventBus, logger=None):
         self.event_bus = event_bus
         self.logger = logger
         self.current_stack: Optional[Dict] = None
         self.next_stack: Optional[Dict] = None
-        
+        self._current_stack_name: Optional[str] = None
+
+        # Initialize state persistence
+        self.persistence = StatePersistence(logger=logger)
+
         # Subscribe to events
         self.event_bus.subscribe(EventType.STACK_MERGED, self.handle_stack_merged)
         self.event_bus.subscribe(EventType.ORCHESTRATION_COMPLETED, self.handle_orchestration_completed)
-        
+        self.event_bus.subscribe(EventType.ORCHESTRATION_FAILED, self.handle_orchestration_failed)
+
         if self.logger:
-            self.logger.info("StackStateManager initialized")
-    
+            self.logger.info("StackStateManager initialized with persistence")
+
+    def _get_stack_name(self, stack: Optional[Dict]) -> str:
+        """Extract stack name from stack definition."""
+        if not stack:
+            return "default"
+        metadata = stack.get("metadata", {})
+        return metadata.get("name", stack.get("name", "default"))
+
     def set_current_stack(self, stack: Dict) -> None:
         """Update current stack state."""
         self.current_stack = stack
+        self._current_stack_name = self._get_stack_name(stack)
         if self.logger:
             self.logger.debug("Current stack updated")
-    
+
     def set_next_stack(self, stack: Dict) -> None:
         """Set stack for next deployment."""
         self.next_stack = stack
         if self.logger:
             self.logger.debug("Next stack set")
-    
+
     def get_current_stack(self) -> Optional[Dict]:
         """Get current stack."""
         return self.current_stack
-    
+
     def get_next_stack(self) -> Optional[Dict]:
         """Get next stack."""
         return self.next_stack
-    
+
     def get_stack_transition(self) -> StackTransition:
         """Calculate transition from current to next."""
         return StackTransition(
@@ -111,7 +126,7 @@ class StackStateManager:
             next=self.next_stack,
             transition_type=self._determine_transition_type()
         )
-    
+
     def _determine_transition_type(self) -> str:
         """Determine the type of transition."""
         if not self.current_stack:
@@ -120,31 +135,74 @@ class StackStateManager:
             return "shutdown"
         else:
             return "update"
-    
+
+    def get_previous_stack(self) -> Optional[Dict]:
+        """Get the previous stack for rollback."""
+        if self._current_stack_name:
+            return self.persistence.get_previous_stack(self._current_stack_name)
+        return None
+
+    def can_rollback(self) -> bool:
+        """Check if rollback is possible."""
+        if self._current_stack_name:
+            return self.persistence.can_rollback(self._current_stack_name)
+        return False
+
+    def mark_deployment_started(self, stack: Dict) -> None:
+        """Mark deployment as started and persist state."""
+        stack_name = self._get_stack_name(stack)
+        self.persistence.mark_deployment_started(stack_name, stack)
+        self.set_next_stack(stack)
+        if self.logger:
+            self.logger.info(f"Deployment started for {stack_name}")
+
     def handle_stack_merged(self, event: StackMergedEvent):
         """Handle stack merged event."""
         self.set_current_stack(event.merged_stack)
         if self.logger:
             self.logger.info("Updated current stack from merge event")
-    
+
     def handle_orchestration_completed(self, event):
-        """Handle orchestration completion."""
+        """Handle orchestration completion and persist state."""
         if hasattr(event, 'final_stack_state') and event.final_stack_state:
             self.set_current_stack(event.final_stack_state)
+            stack_name = self._get_stack_name(event.final_stack_state)
+            self.persistence.mark_deployment_completed(stack_name)
             if self.logger:
-                self.logger.info("Updated current stack from orchestration completion")
+                self.logger.info(f"Orchestration completed for {stack_name}, state persisted")
+
+    def handle_orchestration_failed(self, event: OrchestrationFailedEvent):
+        """Handle orchestration failure and persist state."""
+        stack_name = self._current_stack_name or "unknown"
+        error_msg = getattr(event, 'error_details', str(event)) if hasattr(event, 'error_details') else "Unknown error"
+        self.persistence.mark_deployment_failed(stack_name, error_msg)
+        if self.logger:
+            self.logger.error(f"Orchestration failed for {stack_name}: {error_msg}")
+
+    def complete_rollback(self) -> bool:
+        """Mark rollback as completed after successful restore."""
+        if self._current_stack_name:
+            success = self.persistence.mark_rollback_completed(self._current_stack_name)
+            if success:
+                # Update in-memory state to match persisted state
+                state = self.persistence.load_state(self._current_stack_name)
+                if state and state.current_stack:
+                    self.current_stack = state.current_stack
+            return success
+        return False
 
 
 class StackAnalyzer:
     """Analyzes stack characteristics and determines execution requirements."""
-    
+
     def __init__(self, event_bus: EventBus, logger=None):
         self.event_bus = event_bus
         self.logger = logger
-        
+        self.stack_parser = create_stack_parser(logger)
+
         # Subscribe to stack request events
         self.event_bus.subscribe(EventType.STACK_REQUEST, self.handle_stack_request)
-        
+
         if self.logger:
             self.logger.info("StackAnalyzer initialized")
     
@@ -192,12 +250,58 @@ class StackAnalyzer:
         )
     
     def handle_stack_request(self, event: StackRequestEvent):
-        """Handle stack request by analyzing the payload."""
+        """Handle stack request by analyzing and validating the payload."""
         try:
             stack_payload = event.stack_payload or {}
+
+            # For kill actions, we only need a stackId reference, not a full manifest
+            # Skip full validation for these reference-only payloads
+            if event.action == "kill":
+                # stackId can be at top level or inside 'value' key
+                stack_id = stack_payload.get("stackId") or stack_payload.get("value", {}).get("stackId")
+                if not stack_id:
+                    if self.logger:
+                        self.logger.error(f"Kill action requires stackId for {event.stack_name}")
+                    return
+
+                # For kill actions, emit a special analyzed event that skips provisioning/launching
+                analyzed_event = StackAnalyzedEvent(
+                    event_type=EventType.STACK_ANALYZED,
+                    source_component="stack_analyzer",
+                    stack_name=event.stack_name,
+                    action=event.action,
+                    analysis_result={
+                        "stack_type": "kill",
+                        "is_kill_action": True,
+                        "stack_id": stack_id,
+                        "requires_provision": False,
+                        "requires_launch": False
+                    },
+                    processing_requirements={
+                        "requires_provision": False,
+                        "requires_launch": False,
+                        "is_kill_action": True
+                    },
+                    stack_payload=stack_payload,
+                    correlation_id=event.correlation_id,
+                    metadata={"action": event.action, "stack_id": stack_id}
+                )
+
+                if self.logger:
+                    self.logger.info(f"Kill action for stack_id={stack_id}")
+
+                self.event_bus.publish_sync(analyzed_event)
+                return
+
+            # Validate full stack manifest for start/apply actions
+            if not self.stack_parser.validate_stack(stack_payload):
+                if self.logger:
+                    self.logger.error(f"Stack validation failed for {event.stack_name} - malformed manifest")
+                return
+
             stack_type = self.analyze_stack_type(stack_payload)
             requirements = self.determine_execution_requirements(stack_payload)
-            
+
             analyzed_event = StackAnalyzedEvent(
                 event_type=EventType.STACK_ANALYZED,
                 source_component="stack_analyzer",
@@ -214,12 +318,13 @@ class StackAnalyzer:
                 },
                 processing_requirements=requirements.to_dict(),
                 stack_payload=stack_payload,  # Use direct field instead of nested structure
-                correlation_id=event.correlation_id
+                correlation_id=event.correlation_id,
+                metadata={"action": event.action}
             )
-            
+
             if self.logger:
                 self.logger.info(f"Analyzed stack as {stack_type.value}, requires_provision={requirements.requires_provision}")
-            
+
             self.event_bus.publish_sync(analyzed_event)
             
         except Exception as e:

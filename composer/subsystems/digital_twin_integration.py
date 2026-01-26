@@ -60,6 +60,10 @@ class TwinServiceClient:
                     self._handle_compose_request(event)
                 else:
                     self._handle_decompose_request(event)
+            elif event.action == "kill":
+                # Kill actions don't need twin manifest handling - just pass through
+                if self.logger:
+                    self.logger.debug(f"Kill action for {event.stack_name} - no twin manifest handling needed")
             else:
                 if self.logger:
                     self.logger.warning(f"Unhandled action in stack request: {event.action}")
@@ -273,6 +277,11 @@ class TwinSynchronizer:
             # Perform synchronization based on action
             if event.action in ["compose", "decompose"]:
                 self._sync_for_stack_action(event)
+            elif event.action == "kill":
+                # Kill actions don't need twin synchronization
+                if self.logger:
+                    self.logger.debug(f"Kill action - skipping twin synchronization")
+                self.sync_state[correlation_id]["status"] = "synchronized"
             else:
                 if self.logger:
                     self.logger.warning(f"No synchronization logic for action: {event.action}")

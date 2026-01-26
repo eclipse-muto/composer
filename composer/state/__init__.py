@@ -11,12 +11,13 @@
 #   Composiv.ai - initial API and implementation
 #
 
-from .base_plugin import StackTypeHandler, BasePlugin, StackContext, StackOperation
+"""
+State persistence package for Muto Composer.
 
-__all__ = [
+Provides persistent state storage for stack deployments,
+enabling rollback to previous versions on failure.
+"""
 
-    'StackTypeHandler',
-    'BasePlugin',
-    'StackContext',
-    'StackOperation',
-]
+from composer.state.persistence import StatePersistence, StackState
+
+__all__ = ["StatePersistence", "StackState"]

@@ -20,15 +20,8 @@ import uuid
 import asyncio
 from datetime import datetime
 from enum import Enum
-from typing import Dict, Any, Optional, List, Callable
-from concurrent.futures import ThreadPoolExecutor
-
-import uuid
-from datetime import datetime
-from enum import Enum
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List, Callable
-import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -47,6 +40,11 @@ class EventType(Enum):
     ORCHESTRATION_STARTED = "orchestration.started"
     ORCHESTRATION_COMPLETED = "orchestration.completed"
     ORCHESTRATION_FAILED = "orchestration.failed"
+
+    # Rollback Events
+    ROLLBACK_STARTED = "orchestration.rollback.started"
+    ROLLBACK_COMPLETED = "orchestration.rollback.completed"
+    ROLLBACK_FAILED = "orchestration.rollback.failed"
     
     # Pipeline Events
     PIPELINE_REQUESTED = "pipeline.requested"
@@ -74,6 +72,9 @@ class EventType(Enum):
     TWIN_SYNC_REQUESTED = "twin.sync.requested"
     TWIN_SYNC_COMPLETED = "twin.sync.completed"
     CONFIGURATION_CHANGED = "config.changed"
+
+    # Process Health Events
+    PROCESS_CRASHED = "process.crashed"
 
 
 class BaseComposeEvent:
@@ -207,20 +208,93 @@ class OrchestrationStartedEvent(BaseComposeEvent):
 
 class OrchestrationCompletedEvent(BaseComposeEvent):
     """Event triggered when orchestration completes successfully."""
-    
+
     def __init__(self, event_type: EventType, source_component: str, orchestration_id: str,
                  final_stack_state: Optional[Dict[str, Any]] = None,
                  execution_summary: Optional[Dict[str, Any]] = None,
                  duration: float = 0.0, **kwargs):
         super().__init__(
-            event_type=event_type, 
-            source_component=source_component, 
+            event_type=event_type,
+            source_component=source_component,
             orchestration_id=orchestration_id,
             **kwargs
         )
         self.final_stack_state = final_stack_state or {}
         self.execution_summary = execution_summary or {}
         self.duration = duration
+
+
+class OrchestrationFailedEvent(BaseComposeEvent):
+    """Event triggered when orchestration fails."""
+
+    def __init__(self, event_type: EventType, source_component: str, orchestration_id: str,
+                 error_details: Optional[str] = None,
+                 failed_step: Optional[str] = None,
+                 stack_payload: Optional[Dict[str, Any]] = None,
+                 can_rollback: bool = False, **kwargs):
+        super().__init__(
+            event_type=event_type,
+            source_component=source_component,
+            orchestration_id=orchestration_id,
+            stack_payload=stack_payload,
+            **kwargs
+        )
+        self.error_details = error_details or ""
+        self.failed_step = failed_step or ""
+        self.can_rollback = can_rollback
+
+
+class RollbackStartedEvent(BaseComposeEvent):
+    """Event triggered when rollback to previous stack version begins."""
+
+    def __init__(self, event_type: EventType, source_component: str,
+                 orchestration_id: Optional[str] = None,
+                 previous_stack: Optional[Dict[str, Any]] = None,
+                 failed_stack: Optional[Dict[str, Any]] = None,
+                 failure_reason: str = "", **kwargs):
+        super().__init__(
+            event_type=event_type,
+            source_component=source_component,
+            orchestration_id=orchestration_id or str(uuid.uuid4()),
+            **kwargs
+        )
+        self.previous_stack = previous_stack or {}
+        self.failed_stack = failed_stack or {}
+        self.failure_reason = failure_reason
+
+
+class RollbackCompletedEvent(BaseComposeEvent):
+    """Event triggered when rollback completes successfully."""
+
+    def __init__(self, event_type: EventType, source_component: str,
+                 orchestration_id: str,
+                 restored_stack: Optional[Dict[str, Any]] = None,
+                 rollback_duration: float = 0.0, **kwargs):
+        super().__init__(
+            event_type=event_type,
+            source_component=source_component,
+            orchestration_id=orchestration_id,
+            **kwargs
+        )
+        self.restored_stack = restored_stack or {}
+        self.rollback_duration = rollback_duration
+
+
+class RollbackFailedEvent(BaseComposeEvent):
+    """Event triggered when rollback fails."""
+
+    def __init__(self, event_type: EventType, source_component: str,
+                 orchestration_id: str,
+                 error_details: str = "",
+                 original_failure: str = "", **kwargs):
+        super().__init__(
+            event_type=event_type,
+            source_component=source_component,
+            orchestration_id=orchestration_id,
+            **kwargs
+        )
+        self.error_details = error_details
+        self.original_failure = original_failure
 
 
 class PipelineRequestedEvent(BaseComposeEvent):
@@ -318,18 +392,37 @@ class StackProcessedEvent(BaseComposeEvent):
 
 class TwinUpdateEvent(BaseComposeEvent):
     """Event triggered when a digital twin update is requested."""
-    
+
     def __init__(self, event_type: EventType = None, source_component: str = "twin_integration",
-                 twin_id: str = "", update_type: str = "", 
+                 twin_id: str = "", update_type: str = "",
                  data: Optional[Dict[str, Any]] = None, **kwargs):
         super().__init__(
-            event_type=event_type or EventType.TWIN_UPDATE, 
-            source_component=source_component, 
+            event_type=event_type or EventType.TWIN_UPDATE,
+            source_component=source_component,
             **kwargs
         )
         self.twin_id = twin_id
         self.update_type = update_type
         self.data = data or {}
+
+
+class ProcessCrashedEvent(BaseComposeEvent):
+    """Event triggered when a launched process crashes unexpectedly."""
+
+    def __init__(self, event_type: EventType = None, source_component: str = "launch_plugin",
+                 process_name: str = "", exit_code: int = -1,
+                 stack_name: str = "", error_message: str = "",
+                 process_output: str = "", **kwargs):
+        super().__init__(
+            event_type=event_type or EventType.PROCESS_CRASHED,
+            source_component=source_component,
+            stack_name=stack_name,
+            **kwargs
+        )
+        self.process_name = process_name
+        self.exit_code = exit_code
+        self.error_message = error_message
+        self.process_output = process_output
 
 
 class PipelineEvents:
