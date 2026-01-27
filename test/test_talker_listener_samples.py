@@ -31,8 +31,8 @@ class TestTalkerListenerSamples(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Load all sample files from docs/samples/talker-listener/"""
-        # Find the samples directory relative to the repo root
-        cls.samples_dir = Path(__file__).parent.parent.parent.parent / "docs" / "samples" / "talker-listener"
+        # Find the samples directory relative to the composer repo root
+        cls.samples_dir = Path(__file__).parent.parent / "docs" / "samples" / "talker-listener"
         cls.parser = create_stack_parser()
 
     def _load_sample(self, filename: str) -> dict:
