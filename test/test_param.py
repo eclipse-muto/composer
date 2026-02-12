@@ -12,12 +12,12 @@
 #
 
 import unittest
-import muto_composer.model.param as param
 from unittest.mock import MagicMock, patch
+
+import muto_composer.model.param as param
 
 
 class TestParam(unittest.TestCase):
-
     @patch("muto_composer.model.param.Param._resolve_value")
     def setUp(self, mock_resolve_value):
         self.mock_stack = MagicMock()

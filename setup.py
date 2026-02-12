@@ -12,8 +12,9 @@
 #
 
 import os
-from setuptools import find_packages, setup
 from glob import glob
+
+from setuptools import find_packages, setup
 
 PACKAGE_NAME = "muto_composer"
 

@@ -13,45 +13,49 @@
 
 from __future__ import annotations
 
-import os
 import base64
 import binascii
+import hashlib
 import json
-import requests
+import os
 import shutil
 import subprocess
 import tarfile
 import tempfile
 import zipfile
-import hashlib
-from typing import Any, Dict
+from typing import Any
 from urllib.parse import urlparse
-from typing import Optional
 
-from muto_composer.plugins.base_plugin import BasePlugin, StackTypeHandler, StackContext, StackOperation
-from muto_composer.utils.paths import WORKSPACES_PATH, ARTIFACT_STATE_FILE
+import requests
 
+from muto_composer.plugins.base_plugin import (
+    BasePlugin,
+    StackContext,
+    StackOperation,
+    StackTypeHandler,
+)
+from muto_composer.utils.paths import ARTIFACT_STATE_FILE, WORKSPACES_PATH
 
 
 class ArchiveStackHandler(StackTypeHandler):
     """Handler for stack/archive type stacks."""
-    
-    def __init__(self, logger=None, ignored_packages: Optional[list[str]] = None):
+
+    def __init__(self, logger=None, ignored_packages: list[str] | None = None):
         self.is_up_to_date = False
         self.logger = logger
         self.ignored_packages = ignored_packages if ignored_packages is not None else []
 
-    def can_handle(self, payload: Dict[str, Any]) -> bool:
+    def can_handle(self, payload: dict[str, Any]) -> bool:
         """Check for stack/archive content_type in properly defined solution."""
         if not isinstance(payload, dict):
             return False
         metadata = payload.get("metadata", {})
         content_type = metadata.get("content_type", "")
         return content_type == "stack/archive"
-    
+
     def apply_to_plugin(self, plugin: BasePlugin, context: StackContext, request, response) -> bool:
         """Double dispatch: delegate to plugin's accept method."""
-        
+
         if context.operation == StackOperation.PROVISION:
             return self._provision_archive(context, plugin)
         elif context.operation == StackOperation.START:
@@ -66,50 +70,46 @@ class ArchiveStackHandler(StackTypeHandler):
         else:
             if self.logger:
                 self.logger.warning(f"Unsupported operation for archive stack: {context.operation}")
-            return False  
-    
+            return False
+
     def _provision_archive(self, context: StackContext, plugin: BasePlugin) -> bool:
         try:
             self.from_archive(context)
             if not self.is_up_to_date:
-                self.logger.info(
-                    "Workspace is NOT up-to-date. Updating..."
-                )
+                self.logger.info("Workspace is NOT up-to-date. Updating...")
                 self.install_dependencies(context)
                 self.build_workspace(context)
                 self.is_up_to_date = True
             else:
-                self.logger.info(
-                    "Workspace is up-to-date. Skipping build and provisioning steps."
-                )                    
+                self.logger.info("Workspace is up-to-date. Skipping build and provisioning steps.")
             return True
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Error in apply_to_plugin for archive stack: {e}")
             return False
-    
+
     def _start_archive(self, context: StackContext, plugin: BasePlugin) -> bool:
         try:
             launch_data = context.stack_data.get("launch", {})
             props = launch_data.get("properties", {})
             launch_file = props.get("launch_file")
-            
+
             if not launch_file:
                 if self.logger:
                     self.logger.error("No launch_file specified in archive stack properties")
                 return False
-            
+
             if not context.workspace_path:
                 if self.logger:
                     self.logger.error("No workspace_path specified for archive stack start")
                 return False
 
             plugin._launch_via_ros2(context, launch_file)
-            
+
             # Store the process in the context for later management
             # Note: This needs to be handled by the plugin for process lifecycle management
             return True
-            
+
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Error starting archive stack: {e}")
@@ -130,7 +130,7 @@ class ArchiveStackHandler(StackTypeHandler):
             if self.logger:
                 self.logger.error(f"Error killing archive stack: {e}")
             return False
-         
+
     def from_archive(self, context) -> None:
         """Download and extract an archive described in the stack manifest."""
         manifest = context.stack_data
@@ -142,7 +142,7 @@ class ArchiveStackHandler(StackTypeHandler):
         if not workspace_dir:
             return
 
-        props = artifact.get("properties", {})  
+        props = artifact.get("properties", {})
         base_state = {
             "type": "archive",
             "subdir": props.get("subdir"),
@@ -161,9 +161,7 @@ class ArchiveStackHandler(StackTypeHandler):
             self.is_up_to_date = False
             self._reset_workspace(workspace_dir)
             self._extract_archive(archive_path, workspace_dir)
-            self.logger.info(
-                f"Workspace contents after extraction: {os.listdir(workspace_dir)}"
-            )
+            self.logger.info(f"Workspace contents after extraction: {os.listdir(workspace_dir)}")
 
         subdir = props.get("subdir")
         if subdir:
@@ -179,39 +177,36 @@ class ArchiveStackHandler(StackTypeHandler):
 
         self._write_artifact_state(workspace_dir, {**base_state, **state_info})
 
-
     def _artifact_state_path(self, workspace_dir: str) -> str:
         return os.path.join(workspace_dir, ARTIFACT_STATE_FILE)
 
-    def _load_artifact_state(self, workspace_dir: str) -> Dict[str, Any]:
+    def _load_artifact_state(self, workspace_dir: str) -> dict[str, Any]:
         state_path = self._artifact_state_path(workspace_dir)
         if not os.path.exists(state_path):
             return {}
         try:
-            with open(state_path, "r", encoding="utf-8") as state_file:
+            with open(state_path, encoding="utf-8") as state_file:
                 return json.load(state_file)
         except (OSError, json.JSONDecodeError) as exc:
-            self.logger.warning(
-                f"Failed to read artifact state from {state_path}: {exc}"
-            )
+            self.logger.warning(f"Failed to read artifact state from {state_path}: {exc}")
             return {}
 
-    def _write_artifact_state(self, workspace_dir: str, state: Dict[str, Any]) -> None:
+    def _write_artifact_state(self, workspace_dir: str, state: dict[str, Any]) -> None:
         state_path = self._artifact_state_path(workspace_dir)
         try:
             with open(state_path, "w", encoding="utf-8") as state_file:
                 json.dump(state, state_file)
         except OSError as exc:
-            self.logger.warning(
-                f"Failed to persist artifact state to {state_path}: {exc}"
-            )
+            self.logger.warning(f"Failed to persist artifact state to {state_path}: {exc}")
 
     def _reset_workspace(self, workspace_dir: str) -> None:
         if os.path.isdir(workspace_dir):
             shutil.rmtree(workspace_dir, ignore_errors=True)
         os.makedirs(workspace_dir, exist_ok=True)
 
-    def _prepare_archive(self, manifest: Dict[str, Any], temp_dir: str) -> tuple[str, Dict[str, Any]]:
+    def _prepare_archive(
+        self, manifest: dict[str, Any], temp_dir: str
+    ) -> tuple[str, dict[str, Any]]:
         artifact = manifest.get("launch", {})
         data_b64 = artifact.get("data")
         url = artifact.get("url")
@@ -238,10 +233,12 @@ class ArchiveStackHandler(StackTypeHandler):
                 self._verify_checksum(archive_path, checksum, algorithm)
 
             digest = hashlib.sha256(decoded_bytes).hexdigest()
-            metadata.update({
-                "source": "inline",
-                "data_sha256": digest,
-            })
+            metadata.update(
+                {
+                    "source": "inline",
+                    "data_sha256": digest,
+                }
+            )
 
             return archive_path, metadata
 
@@ -266,8 +263,11 @@ class ArchiveStackHandler(StackTypeHandler):
                 ) as response:
                     try:
                         response.raise_for_status()
-                    except requests.HTTPError as exc:
-                        if response.status_code == 404 and headers.get("Accept") == "application/octet-stream":
+                    except requests.HTTPError:
+                        if (
+                            response.status_code == 404
+                            and headers.get("Accept") == "application/octet-stream"
+                        ):
                             self.logger.warning(
                                 "404 when requesting archive with Accept=application/octet-stream; retrying with '*/*'."
                             )
@@ -373,9 +373,7 @@ class ArchiveStackHandler(StackTypeHandler):
             return
 
         stack_name = self.current_stack.get("name", "default")
-        target_dir = os.path.join(
-            WORKSPACES_PATH, stack_name.replace(" ", "_")
-        )
+        target_dir = os.path.join(WORKSPACES_PATH, stack_name.replace(" ", "_"))
 
         if os.path.exists(os.path.join(target_dir, ".git")):
             self.update_repository(target_dir, branch)
@@ -452,18 +450,14 @@ class ArchiveStackHandler(StackTypeHandler):
                 cwd=repo_dir,
             )
         except subprocess.CalledProcessError:
-            self.logger.warning(
-                f"Branch '{branch}' not found. Falling back to 'main'."
-            )
+            self.logger.warning(f"Branch '{branch}' not found. Falling back to 'main'.")
             subprocess.run(
                 ["git", "checkout", "main"],
                 check=True,
                 cwd=repo_dir,
             )
 
-    def checkout_and_check_submodules(
-        self, target_dir: str, branch: str = "main"
-    ) -> bool:
+    def checkout_and_check_submodules(self, target_dir: str, branch: str = "main") -> bool:
         """
         Ensure all submodules are checked out to the specified branch and are up-to-date.
 
@@ -514,9 +508,7 @@ class ArchiveStackHandler(StackTypeHandler):
                             cwd=submodule_path,
                         )
                 except subprocess.CalledProcessError:
-                    self.logger.warning(
-                        f"Submodule '{submodule}' is not properly set up."
-                    )
+                    self.logger.warning(f"Submodule '{submodule}' is not properly set up.")
                     all_submodules_up_to_date = False
 
         except subprocess.CalledProcessError as e:
@@ -564,9 +556,7 @@ class ArchiveStackHandler(StackTypeHandler):
             dir_path = os.path.join(self.get_workspace_dir(context), dir_name)
             if os.path.exists(dir_path):
                 shutil.rmtree(dir_path)
-                self.logger.info(
-                    f"Removed {dir_name} directory to clean build workspace."
-                )
+                self.logger.info(f"Removed {dir_name} directory to clean build workspace.")
 
     def install_dependencies(self, context):
         """Install dependencies scoped to the workspace with best-effort retries."""
@@ -590,9 +580,7 @@ class ArchiveStackHandler(StackTypeHandler):
                 cwd=workspace_dir,
             )
         except subprocess.CalledProcessError as exc:
-            self.logger.warning(
-                f"rosdep update failed ({exc}); continuing with cached data."
-            )
+            self.logger.warning(f"rosdep update failed ({exc}); continuing with cached data.")
 
         try:
             subprocess.run(
@@ -609,9 +597,7 @@ class ArchiveStackHandler(StackTypeHandler):
                 cwd=workspace_dir,
             )
         except subprocess.CalledProcessError as exc:
-            self.logger.warning(
-                f"rosdep install encountered errors: {exc}."
-            )
+            self.logger.warning(f"rosdep install encountered errors: {exc}.")
 
     def get_workspace_dir(self, context) -> str:
         """Get the workspace directory for the current stack."""

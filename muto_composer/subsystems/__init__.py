@@ -16,11 +16,11 @@ Subsystems package for the refactored Muto Composer.
 Contains modular components for stack management, orchestration, and pipeline execution.
 """
 
+from .digital_twin_integration import DigitalTwinIntegration
 from .message_handler import MessageHandler
-from .stack_manager import StackManager
 from .orchestration_manager import OrchestrationManager
 from .pipeline_engine import PipelineEngine
-from .digital_twin_integration import DigitalTwinIntegration
+from .stack_manager import StackManager
 from .watchdog import ComposerWatchdog, HealthStatus, SubsystemHealth, SystemHealthReport
 
 __all__ = [

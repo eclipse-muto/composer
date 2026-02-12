@@ -16,9 +16,9 @@ Unit tests for the Composer Watchdog facility.
 """
 
 import json
-import unittest
-from unittest.mock import MagicMock, patch
 import time
+import unittest
+from unittest.mock import patch
 
 from muto_composer.subsystems.watchdog import (
     ComposerWatchdog,
@@ -63,7 +63,7 @@ class TestSubsystemHealth(unittest.TestCase):
             status=HealthStatus.HEALTHY,
             message="All good",
             last_check=1234567890.0,
-            response_time_ms=50.5
+            response_time_ms=50.5,
         )
         result = health.to_dict()
 
@@ -89,11 +89,9 @@ class TestSystemHealthReport(unittest.TestCase):
         """Test to_dict serialization."""
         report = SystemHealthReport(
             overall_status=HealthStatus.HEALTHY,
-            subsystems={
-                "test": SubsystemHealth(name="test", status=HealthStatus.HEALTHY)
-            },
+            subsystems={"test": SubsystemHealth(name="test", status=HealthStatus.HEALTHY)},
             timestamp=1234567890.0,
-            uptime_seconds=100.0
+            uptime_seconds=100.0,
         )
         result = report.to_dict()
 
@@ -128,8 +126,8 @@ class TestComposerWatchdogServicesToMonitor(unittest.TestCase):
 class TestComposerWatchdogInitialization(unittest.TestCase):
     """Tests for ComposerWatchdog initialization."""
 
-    @patch('rclpy.init')
-    @patch('rclpy.shutdown')
+    @patch("rclpy.init")
+    @patch("rclpy.shutdown")
     def test_services_to_monitor_count(self, mock_shutdown, mock_init):
         """Test that all services are tracked for monitoring."""
         # The SERVICES_TO_MONITOR constant should be accessible without instantiation
@@ -158,18 +156,18 @@ class TestHealthReportSerialization(unittest.TestCase):
                     status=HealthStatus.HEALTHY,
                     message="OK",
                     last_check=time.time(),
-                    response_time_ms=10.5
+                    response_time_ms=10.5,
                 ),
                 "service2": SubsystemHealth(
                     name="service2",
                     status=HealthStatus.FAILED,
                     message="Service not found",
                     last_check=time.time(),
-                    response_time_ms=5.0
+                    response_time_ms=5.0,
                 ),
             },
             timestamp=time.time(),
-            uptime_seconds=3600.0
+            uptime_seconds=3600.0,
         )
 
         # Should not raise

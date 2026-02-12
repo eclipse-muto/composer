@@ -15,20 +15,22 @@ import hashlib
 import json
 import os
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 from threading import Event
+from typing import Any
 
 import rclpy
-from rclpy.node import Node
-from muto_composer.utils.stack_parser import StackParser
-from muto_composer.utils.paths import WORKSPACES_PATH, ARTIFACT_STATE_FILE
 from muto_msgs.srv import CoreTwin
+from rclpy.node import Node
+
+from muto_composer.utils.paths import WORKSPACES_PATH
+from muto_composer.utils.stack_parser import StackParser
 
 
 class StackOperation(Enum):
     """Enumeration of stack operations."""
+
     START = "start"
     KILL = "kill"
     APPLY = "apply"
@@ -39,16 +41,16 @@ class StackOperation(Enum):
 @dataclass
 class StackContext:
     """Context object passed during double dispatch."""
-    stack_data: Dict[str, Any]
-    metadata: Dict[str, Any]
-    operation: StackOperation
-    name: Optional[str] = None
-    logger: Optional[Any] = None
-    # Additional context data can be added here
-    workspace_path: Optional[str] = None
-    launcher: Optional[Any] = None
-    hash: str = None
 
+    stack_data: dict[str, Any]
+    metadata: dict[str, Any]
+    operation: StackOperation
+    name: str | None = None
+    logger: Any | None = None
+    # Additional context data can be added here
+    workspace_path: str | None = None
+    launcher: Any | None = None
+    hash: str = None
 
 
 class BasePlugin(Node):
@@ -56,6 +58,7 @@ class BasePlugin(Node):
 
     def __init__(self, node_name: str):
         from muto_composer.stack_handlers.registry import StackTypeRegistry
+
         Node.__init__(self, node_name)
         self._stack_definition_client = self.create_client(
             CoreTwin, "/muto/core_twin/get_stack_definition"
@@ -64,27 +67,25 @@ class BasePlugin(Node):
         self.stack_registry.discover_and_register_handlers()
         self.stack_parser = StackParser(self.get_logger())
 
-       
     # Plugin interface implementation - single accept method
-   
+
     def _get_stack_name(self, stack_dict):
         """
         Get the stack name from a stack dictionary, checking metadata.name first, then name, then defaulting to 'default'.
-        
+
         Args:
             stack_dict (dict): The stack dictionary
-            
+
         Returns:
             str: The stack name
         """
         if not stack_dict or not isinstance(stack_dict, dict):
             return "default"
-            
+
         metadata = stack_dict.get("metadata", {})
         return metadata.get("name", stack_dict.get("name", "default"))
- 
-            
-    def find_file(self, ws_path: str, file_name: str) -> Optional[str]:
+
+    def find_file(self, ws_path: str, file_name: str) -> str | None:
         """
         Helper method to find a file in the workspace path.
 
@@ -111,7 +112,6 @@ class BasePlugin(Node):
         self.get_logger().warning(f"File '{file_name}' not found under '{ws_path}'.")
         return None
 
-       
     def find_stack_handler(self, request):
         """
         Get the stack handler for the current context.
@@ -143,7 +143,7 @@ class BasePlugin(Node):
                         WORKSPACES_PATH,
                         stack_name.replace(" ", "_"),
                     )
-                    
+
                     # Create context for double dispatch
                     context = StackContext(
                         stack_data=current_stack,
@@ -152,15 +152,15 @@ class BasePlugin(Node):
                         name=current_stack.get("name", "default"),
                         logger=self.get_logger(),
                         workspace_path=workspace_path,
-                        hash=hash
+                        hash=hash,
                     )
                     return handler, context
         except Exception as e:
             self.get_logger().error(f"Error creating stack_handler: {e}")
-            return None,None
-        return None,None
+            return None, None
+        return None, None
 
-    def _fetch_stack_manifest(self, stack_id: str) -> Optional[Dict[str, Any]]:
+    def _fetch_stack_manifest(self, stack_id: str) -> dict[str, Any] | None:
         """
         Retrieve a stack manifest from CoreTwin using the provided stack ID.
         """
@@ -172,9 +172,7 @@ class BasePlugin(Node):
                 return None
 
             if not self._stack_definition_client.wait_for_service(timeout_sec=0.5):
-                self.get_logger().warning(
-                    "CoreTwin get_stack_definition service is not available."
-                )
+                self.get_logger().warning("CoreTwin get_stack_definition service is not available.")
                 return None
 
             request = CoreTwin.Request()
@@ -204,7 +202,7 @@ class BasePlugin(Node):
 
         return None
 
-    def _handle_twin_response(self, future: rclpy.Future, holder: Dict[str, Any], stack_id: str):
+    def _handle_twin_response(self, future: rclpy.Future, holder: dict[str, Any], stack_id: str):
         """
         Callback to process CoreTwin responses without blocking execution.
         """
@@ -231,7 +229,7 @@ class BasePlugin(Node):
         finally:
             holder["event"].set()
 
-    def _is_manifest_payload(self, stack_dict: Dict[str, Any]) -> bool:
+    def _is_manifest_payload(self, stack_dict: dict[str, Any]) -> bool:
         """
         Determine whether the provided dictionary already looks like a full stack manifest.
         """
@@ -245,16 +243,16 @@ class BasePlugin(Node):
     def _safely_parse_stack(self, stack_string):
         """
         Safely parse a stack string to JSON. Returns dictionary if valid JSON, None otherwise.
-        
+
         Args:
             stack_string (str): The stack string to parse
-            
+
         Returns:
             dict or None: Parsed JSON dictionary or None if parsing fails
         """
         if not stack_string:
             return None
-            
+
         try:
             if isinstance(stack_string, dict):
                 parsed = stack_string
@@ -262,9 +260,7 @@ class BasePlugin(Node):
                 parsed = json.loads(stack_string)
 
             if not isinstance(parsed, dict):
-                self.get_logger().warning(
-                    f"Stack string parsed to non-dict type: {type(parsed)}"
-                )
+                self.get_logger().warning(f"Stack string parsed to non-dict type: {type(parsed)}")
                 return None
 
             if self._is_manifest_payload(parsed):
@@ -286,16 +282,14 @@ class BasePlugin(Node):
                 return manifest
 
             # Fallback to parsed data if manifest retrieval fails
-            self.get_logger().warning(
-                f"Falling back to stack reference for stackId '{stack_id}'."
-            )
+            self.get_logger().warning(f"Falling back to stack reference for stackId '{stack_id}'.")
             return parsed
 
         except (json.JSONDecodeError, TypeError) as e:
             self.get_logger().warning(f"Failed to parse stack string as JSON: {e}")
             return None
 
-    def _validate_stack_manifest(self, stack: Dict[str, Any]) -> bool:
+    def _validate_stack_manifest(self, stack: dict[str, Any]) -> bool:
         """
         Validate that the stack manifest is well-formed before processing.
 
@@ -306,7 +300,9 @@ class BasePlugin(Node):
             True if valid, False otherwise
         """
         if not self.stack_parser.validate_stack(stack):
-            self.get_logger().warning("Stack manifest failed basic validation - missing required structure")
+            self.get_logger().warning(
+                "Stack manifest failed basic validation - missing required structure"
+            )
             return False
 
         # Additional validation: check for content_type consistency if metadata present
@@ -336,12 +332,12 @@ class StackTypeHandler(ABC):
     Abstract base class for stack type handlers.
     Simplified with double dispatch pattern.
     """
-    
+
     @abstractmethod
-    def can_handle(self, payload: Dict[str, Any]) -> bool:
+    def can_handle(self, payload: dict[str, Any]) -> bool:
         """Determine if this handler can process the given payload."""
         pass
-    
+
     @abstractmethod
     def apply_to_plugin(self, plugin: BasePlugin, context: StackContext, request, response) -> any:
         """
@@ -349,4 +345,3 @@ class StackTypeHandler(ABC):
         The handler processes the type-specific logic for STACK operations.
         """
         pass
-    

@@ -16,27 +16,35 @@ Stack management subsystem for the refactored Muto Composer.
 Handles stack states, analysis, and transformations.
 """
 
+import json
 import os
 import re
-import json
-from typing import Dict, Any, Optional
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
+from typing import Any
+
 from ament_index_python.packages import get_package_share_directory
-from muto_composer.model.stack import Stack
-from muto_composer.utils.stack_parser import create_stack_parser
+
 from muto_composer.events import (
-    EventBus, EventType, StackRequestEvent, StackAnalyzedEvent,
-    StackMergedEvent, StackTransformedEvent, StackProcessedEvent,
-    OrchestrationFailedEvent
+    EventBus,
+    EventType,
+    OrchestrationFailedEvent,
+    StackAnalyzedEvent,
+    StackMergedEvent,
+    StackProcessedEvent,
+    StackRequestEvent,
+    StackTransformedEvent,
 )
+from muto_composer.model.stack import Stack
 from muto_composer.state.persistence import StatePersistence
+from muto_composer.utils.stack_parser import create_stack_parser
 
 
 class StackType(Enum):
     """Enumeration of stack types."""
+
     ARCHIVE = "stack/archive"
-    JSON = "stack/json" 
+    JSON = "stack/json"
     RAW = "stack/raw"
     LEGACY = "stack/legacy"
     UNKNOWN = "stack/unknown"
@@ -45,28 +53,30 @@ class StackType(Enum):
 @dataclass
 class ExecutionRequirements:
     """Stack execution requirements."""
+
     requires_provision: bool = False
     requires_launch: bool = False
     has_nodes: bool = False
     has_composables: bool = False
     has_launch_description: bool = False
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "requires_provision": self.requires_provision,
             "requires_launch": self.requires_launch,
             "has_nodes": self.has_nodes,
             "has_composables": self.has_composables,
-            "has_launch_description": self.has_launch_description
+            "has_launch_description": self.has_launch_description,
         }
 
 
 @dataclass
 class StackTransition:
     """Represents a transition between stack states."""
-    current: Optional[Dict[str, Any]] = None
-    next: Optional[Dict[str, Any]] = None
+
+    current: dict[str, Any] | None = None
+    next: dict[str, Any] | None = None
     transition_type: str = "deploy"
 
 
@@ -76,46 +86,48 @@ class StackStateManager:
     def __init__(self, event_bus: EventBus, logger=None):
         self.event_bus = event_bus
         self.logger = logger
-        self.current_stack: Optional[Dict] = None
-        self.next_stack: Optional[Dict] = None
-        self._current_stack_name: Optional[str] = None
+        self.current_stack: dict | None = None
+        self.next_stack: dict | None = None
+        self._current_stack_name: str | None = None
 
         # Initialize state persistence
         self.persistence = StatePersistence(logger=logger)
 
         # Subscribe to events
         self.event_bus.subscribe(EventType.STACK_MERGED, self.handle_stack_merged)
-        self.event_bus.subscribe(EventType.ORCHESTRATION_COMPLETED, self.handle_orchestration_completed)
+        self.event_bus.subscribe(
+            EventType.ORCHESTRATION_COMPLETED, self.handle_orchestration_completed
+        )
         self.event_bus.subscribe(EventType.ORCHESTRATION_FAILED, self.handle_orchestration_failed)
 
         if self.logger:
             self.logger.info("StackStateManager initialized with persistence")
 
-    def _get_stack_name(self, stack: Optional[Dict]) -> str:
+    def _get_stack_name(self, stack: dict | None) -> str:
         """Extract stack name from stack definition."""
         if not stack:
             return "default"
         metadata = stack.get("metadata", {})
         return metadata.get("name", stack.get("name", "default"))
 
-    def set_current_stack(self, stack: Dict) -> None:
+    def set_current_stack(self, stack: dict) -> None:
         """Update current stack state."""
         self.current_stack = stack
         self._current_stack_name = self._get_stack_name(stack)
         if self.logger:
             self.logger.debug("Current stack updated")
 
-    def set_next_stack(self, stack: Dict) -> None:
+    def set_next_stack(self, stack: dict) -> None:
         """Set stack for next deployment."""
         self.next_stack = stack
         if self.logger:
             self.logger.debug("Next stack set")
 
-    def get_current_stack(self) -> Optional[Dict]:
+    def get_current_stack(self) -> dict | None:
         """Get current stack."""
         return self.current_stack
 
-    def get_next_stack(self) -> Optional[Dict]:
+    def get_next_stack(self) -> dict | None:
         """Get next stack."""
         return self.next_stack
 
@@ -124,7 +136,7 @@ class StackStateManager:
         return StackTransition(
             current=self.current_stack,
             next=self.next_stack,
-            transition_type=self._determine_transition_type()
+            transition_type=self._determine_transition_type(),
         )
 
     def _determine_transition_type(self) -> str:
@@ -136,7 +148,7 @@ class StackStateManager:
         else:
             return "update"
 
-    def get_previous_stack(self) -> Optional[Dict]:
+    def get_previous_stack(self) -> dict | None:
         """Get the previous stack for rollback."""
         if self._current_stack_name:
             return self.persistence.get_previous_stack(self._current_stack_name)
@@ -148,7 +160,7 @@ class StackStateManager:
             return self.persistence.can_rollback(self._current_stack_name)
         return False
 
-    def mark_deployment_started(self, stack: Dict) -> None:
+    def mark_deployment_started(self, stack: dict) -> None:
         """Mark deployment as started and persist state."""
         stack_name = self._get_stack_name(stack)
         self.persistence.mark_deployment_started(stack_name, stack)
@@ -164,7 +176,7 @@ class StackStateManager:
 
     def handle_orchestration_completed(self, event):
         """Handle orchestration completion and persist state."""
-        if hasattr(event, 'final_stack_state') and event.final_stack_state:
+        if hasattr(event, "final_stack_state") and event.final_stack_state:
             self.set_current_stack(event.final_stack_state)
             stack_name = self._get_stack_name(event.final_stack_state)
             self.persistence.mark_deployment_completed(stack_name)
@@ -174,7 +186,11 @@ class StackStateManager:
     def handle_orchestration_failed(self, event: OrchestrationFailedEvent):
         """Handle orchestration failure and persist state."""
         stack_name = self._current_stack_name or "unknown"
-        error_msg = getattr(event, 'error_details', str(event)) if hasattr(event, 'error_details') else "Unknown error"
+        error_msg = (
+            getattr(event, "error_details", str(event))
+            if hasattr(event, "error_details")
+            else "Unknown error"
+        )
         self.persistence.mark_deployment_failed(stack_name, error_msg)
         if self.logger:
             self.logger.error(f"Orchestration failed for {stack_name}: {error_msg}")
@@ -205,12 +221,12 @@ class StackAnalyzer:
 
         if self.logger:
             self.logger.info("StackAnalyzer initialized")
-    
-    def analyze_stack_type(self, stack: Dict) -> StackType:
+
+    def analyze_stack_type(self, stack: dict) -> StackType:
         """Determine if stack is archive, JSON, raw, or legacy."""
         metadata = stack.get("metadata", {})
         content_type = metadata.get("content_type", "")
-        
+
         # Check for new prefixed format first
         if content_type == StackType.ARCHIVE.value:
             return StackType.ARCHIVE
@@ -232,23 +248,25 @@ class StackAnalyzer:
         # Fallback analysis based on stack structure
         elif stack.get("node") or stack.get("composable"):
             return StackType.RAW
-        elif stack.get("launch_description_source") or (stack.get("on_start") and stack.get("on_kill")):
+        elif stack.get("launch_description_source") or (
+            stack.get("on_start") and stack.get("on_kill")
+        ):
             return StackType.LEGACY
         else:
             return StackType.UNKNOWN
-    
-    def determine_execution_requirements(self, stack: Dict) -> ExecutionRequirements:
+
+    def determine_execution_requirements(self, stack: dict) -> ExecutionRequirements:
         """Calculate provisioning and launch requirements."""
         stack_type = self.analyze_stack_type(stack)
-        
+
         return ExecutionRequirements(
             requires_provision=stack_type == StackType.ARCHIVE,
             requires_launch=stack_type in [StackType.ARCHIVE, StackType.JSON, StackType.RAW],
             has_nodes=bool(stack.get("node")),
             has_composables=bool(stack.get("composable")),
-            has_launch_description=bool(stack.get("launch_description_source"))
+            has_launch_description=bool(stack.get("launch_description_source")),
         )
-    
+
     def handle_stack_request(self, event: StackRequestEvent):
         """Handle stack request by analyzing and validating the payload."""
         try:
@@ -258,7 +276,9 @@ class StackAnalyzer:
             # Skip full validation for these reference-only payloads
             if event.action == "kill":
                 # stackId can be at top level or inside 'value' key
-                stack_id = stack_payload.get("stackId") or stack_payload.get("value", {}).get("stackId")
+                stack_id = stack_payload.get("stackId") or stack_payload.get("value", {}).get(
+                    "stackId"
+                )
                 if not stack_id:
                     if self.logger:
                         self.logger.error(f"Kill action requires stackId for {event.stack_name}")
@@ -275,16 +295,16 @@ class StackAnalyzer:
                         "is_kill_action": True,
                         "stack_id": stack_id,
                         "requires_provision": False,
-                        "requires_launch": False
+                        "requires_launch": False,
                     },
                     processing_requirements={
                         "requires_provision": False,
                         "requires_launch": False,
-                        "is_kill_action": True
+                        "is_kill_action": True,
                     },
                     stack_payload=stack_payload,
                     correlation_id=event.correlation_id,
-                    metadata={"action": event.action, "stack_id": stack_id}
+                    metadata={"action": event.action, "stack_id": stack_id},
                 )
 
                 if self.logger:
@@ -296,7 +316,9 @@ class StackAnalyzer:
             # Validate full stack manifest for start/apply actions
             if not self.stack_parser.validate_stack(stack_payload):
                 if self.logger:
-                    self.logger.error(f"Stack validation failed for {event.stack_name} - malformed manifest")
+                    self.logger.error(
+                        f"Stack validation failed for {event.stack_name} - malformed manifest"
+                    )
                 return
 
             stack_type = self.analyze_stack_type(stack_payload)
@@ -314,19 +336,21 @@ class StackAnalyzer:
                     "requires_launch": requirements.requires_launch,
                     "has_nodes": requirements.has_nodes,
                     "has_composables": requirements.has_composables,
-                    "has_launch_description": requirements.has_launch_description
+                    "has_launch_description": requirements.has_launch_description,
                 },
                 processing_requirements=requirements.to_dict(),
                 stack_payload=stack_payload,  # Use direct field instead of nested structure
                 correlation_id=event.correlation_id,
-                metadata={"action": event.action}
+                metadata={"action": event.action},
             )
 
             if self.logger:
-                self.logger.info(f"Analyzed stack as {stack_type.value}, requires_provision={requirements.requires_provision}")
+                self.logger.info(
+                    f"Analyzed stack as {stack_type.value}, requires_provision={requirements.requires_provision}"
+                )
 
             self.event_bus.publish_sync(analyzed_event)
-            
+
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Error analyzing stack: {e}")
@@ -334,18 +358,18 @@ class StackAnalyzer:
 
 class StackProcessor:
     """Handles stack transformations and merging."""
-    
+
     def __init__(self, event_bus: EventBus, logger=None):
         self.event_bus = event_bus
         self.logger = logger
         self.stack_parser = create_stack_parser(logger)
-        
+
         # Subscribe to events that require processing
         self.event_bus.subscribe(EventType.STACK_ANALYZED, self.handle_stack_analyzed)
-        
+
         if self.logger:
             self.logger.info("StackProcessor initialized")
-    
+
     def handle_stack_analyzed(self, event: StackAnalyzedEvent):
         """Handle stack analyzed event and perform required processing."""
         try:
@@ -353,7 +377,7 @@ class StackProcessor:
             stack_payload = event.manifest_data.get("stack_payload", {})
             processed_payload = stack_payload
             processing_applied = False
-            
+
             # Check if merging is required
             if processing_requirements.get("merge_manifests", False):
                 # For now, we'll simulate merging with current stack
@@ -361,19 +385,19 @@ class StackProcessor:
                 current_stack = {}  # Would be retrieved from state manager
                 processed_payload = self.merge_stacks(current_stack, processed_payload)
                 processing_applied = True
-                
+
                 if self.logger:
                     self.logger.info("Stack merging completed as required by analysis")
-            
+
             # Check if expression resolution is required
             if processing_requirements.get("resolve_expressions", False):
                 resolved_json = self.resolve_expressions(json.dumps(processed_payload))
                 processed_payload = json.loads(resolved_json)
                 processing_applied = True
-                
+
                 if self.logger:
                     self.logger.info("Expression resolution completed as required by analysis")
-            
+
             # If any processing was applied, emit a processed event with updated payload
             if processing_applied:
                 processed_event = StackProcessedEvent(
@@ -384,27 +408,29 @@ class StackProcessor:
                     action=event.action,
                     stack_payload=processed_payload,
                     original_payload=stack_payload,
-                    processing_applied=list(processing_requirements.keys())
+                    processing_applied=list(processing_requirements.keys()),
                 )
                 self.event_bus.publish_async(processed_event)
-                
+
                 if self.logger:
-                    self.logger.info(f"Published processed stack event with applied processing: {processing_requirements}")
-            
+                    self.logger.info(
+                        f"Published processed stack event with applied processing: {processing_requirements}"
+                    )
+
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Error processing analyzed stack: {e}")
-    
-    def merge_stacks(self, current: Dict, next: Dict) -> Dict:
+
+    def merge_stacks(self, current: dict, next: dict) -> dict:
         """Merge current and next stacks intelligently."""
         try:
             if not current:
                 current = {}
-            
+
             stack_1 = Stack(manifest=current)
             stack_2 = Stack(manifest=next)
             merged = stack_1.merge(stack_2)
-            
+
             # Publish merge event
             merge_event = StackMergedEvent(
                 event_type=EventType.STACK_MERGED,
@@ -412,37 +438,37 @@ class StackProcessor:
                 current_stack=current,
                 next_stack=next,
                 stack_payload=merged.manifest,
-                merge_strategy="intelligent_merge"
+                merge_strategy="intelligent_merge",
             )
             self.event_bus.publish_sync(merge_event)
-            
+
             if self.logger:
                 self.logger.info("Successfully merged stacks")
-            
+
             return merged.manifest
-            
+
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Error merging stacks: {e}")
             return next  # Fallback to next stack
-    
-    def resolve_expressions(self, stack_json: str, current_stack: Optional[Dict] = None) -> str:
+
+    def resolve_expressions(self, stack_json: str, current_stack: dict | None = None) -> str:
         """Resolve dynamic expressions in stack definitions."""
         try:
             expressions = re.findall(r"\$\(([\s0-9a-zA-Z_-]+)\)", stack_json)
             result = stack_json
             resolved_expressions = {}
-            
+
             for expression in expressions:
                 parts = expression.split()
                 if len(parts) != 2:
                     if self.logger:
                         self.logger.warning(f"Invalid expression format: {expression}")
                     continue
-                    
+
                 expr, var = parts
                 resolved_value = ""
-                
+
                 try:
                     if expr == "find":
                         resolved_value = get_package_share_directory(var)
@@ -453,7 +479,7 @@ class StackProcessor:
                             resolved_value = current_stack.get("args", {}).get(var, "")
                         if self.logger:
                             self.logger.info(f"Resolved arg {var}: {resolved_value}")
-                    
+
                     resolved_expressions[expression] = resolved_value
                     result = re.sub(
                         r"\$\(" + re.escape(expression) + r"\)",
@@ -465,7 +491,7 @@ class StackProcessor:
                     if self.logger:
                         self.logger.warning(f"Failed to resolve expression {expression}: {e}")
                     continue
-            
+
             # Publish transformation event if any expressions were resolved
             if resolved_expressions:
                 transform_event = StackTransformedEvent(
@@ -474,21 +500,21 @@ class StackProcessor:
                     original_stack=json.loads(stack_json),
                     stack_payload=json.loads(result),
                     expressions_resolved=resolved_expressions,
-                    transformation_type="expression_resolution"
+                    transformation_type="expression_resolution",
                 )
                 self.event_bus.publish_sync(transform_event)
-                
+
                 if self.logger:
                     self.logger.info(f"Resolved {len(resolved_expressions)} expressions")
-            
+
             return result
-            
+
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Error resolving expressions: {e}")
             return stack_json  # Return original on error
-    
-    def parse_payload(self, payload: Dict) -> Dict:
+
+    def parse_payload(self, payload: dict) -> dict:
         """Parse and normalize different payload formats."""
         try:
             parsed = self.stack_parser.parse_payload(payload)
@@ -505,27 +531,27 @@ class StackProcessor:
 
 class StackManager:
     """Main stack management subsystem coordinator."""
-    
+
     def __init__(self, event_bus: EventBus, logger=None):
         self.event_bus = event_bus
         self.logger = logger
-        
+
         # Initialize components
         self.state_manager = StackStateManager(event_bus, logger)
         self.analyzer = StackAnalyzer(event_bus, logger)
         self.processor = StackProcessor(event_bus, logger)
-        
+
         if self.logger:
             self.logger.info("StackManager subsystem initialized")
-    
+
     def get_state_manager(self) -> StackStateManager:
         """Get state manager."""
         return self.state_manager
-    
+
     def get_analyzer(self) -> StackAnalyzer:
         """Get analyzer."""
         return self.analyzer
-    
+
     def get_processor(self) -> StackProcessor:
         """Get processor."""
         return self.processor

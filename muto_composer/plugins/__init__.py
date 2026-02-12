@@ -11,12 +11,11 @@
 #   Composiv.ai - initial API and implementation
 #
 
-from .base_plugin import StackTypeHandler, BasePlugin, StackContext, StackOperation
+from .base_plugin import BasePlugin, StackContext, StackOperation, StackTypeHandler
 
 __all__ = [
-
-    'StackTypeHandler',
-    'BasePlugin',
-    'StackContext',
-    'StackOperation',
+    "StackTypeHandler",
+    "BasePlugin",
+    "StackContext",
+    "StackOperation",
 ]

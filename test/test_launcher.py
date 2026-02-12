@@ -14,15 +14,14 @@
 import signal
 import unittest
 from unittest.mock import MagicMock, call, patch
-from launch import LaunchDescription
 
 import rclpy
+from launch import LaunchDescription
 
 from muto_composer.workflow.launcher import Ros2LaunchParent
 
 
 class TestLauncher(unittest.TestCase):
-
     def setUp(self):
         self.manager = MagicMock()
         self._active_nodes = self.manager.list()
@@ -52,9 +51,7 @@ class TestLauncher(unittest.TestCase):
 
     def test_parse_launch_arguments(self):
         launch_list = ["launch_css:=false", "launch_sensor:=false"]
-        returned_value = Ros2LaunchParent.parse_launch_arguments(
-            self, launch_arguments=launch_list
-        )
+        returned_value = Ros2LaunchParent.parse_launch_arguments(self, launch_arguments=launch_list)
         self.assertIn(("launch_css", "false"), returned_value)
         self.assertIn(("launch_sensor", "false"), returned_value)
 
@@ -69,9 +66,7 @@ class TestLauncher(unittest.TestCase):
             "launch_sensor:=false",
             "launch_sensor:=true",
         ]
-        returned_value = Ros2LaunchParent.parse_launch_arguments(
-            self, launch_arguments=launch_list
-        )
+        returned_value = Ros2LaunchParent.parse_launch_arguments(self, launch_arguments=launch_list)
         self.assertIn(("launch_css", "false"), returned_value)
         self.assertIn(("launch_sensor", "true"), returned_value)
         self.assertNotIn(("la0unch_sensor", "false"), returned_value)
@@ -120,9 +115,7 @@ class TestLauncher(unittest.TestCase):
         ros2launch_parent.kill()
         ros2launch_parent._lock.__enter__.assert_called_once()
         mock_kill.assert_not_called()
-        mock_logger.get_logger().info.assert_called_once_with(
-            "No active nodes to kill."
-        )
+        mock_logger.get_logger().info.assert_called_once_with("No active nodes to kill.")
 
     @patch("rclpy.logging")
     @patch("os.kill")
@@ -139,12 +132,8 @@ class TestLauncher(unittest.TestCase):
         )
         self.assertEqual(ros2launch_parent._active_nodes, [])
         # Check that both nodes were logged (order may vary due to parallel execution)
-        mock_logger.get_logger().info.assert_any_call(
-            "Sent SIGKILL to process node1 (PID 1234)"
-        )
-        mock_logger.get_logger().info.assert_any_call(
-            "Sent SIGKILL to process node2 (PID 5678)"
-        )
+        mock_logger.get_logger().info.assert_any_call("Sent SIGKILL to process node1 (PID 1234)")
+        mock_logger.get_logger().info.assert_any_call("Sent SIGKILL to process node2 (PID 5678)")
 
     @patch("rclpy.logging")
     @patch("os.kill", side_effect=ProcessLookupError)
@@ -193,9 +182,7 @@ class TestLauncher(unittest.TestCase):
         mock_process.join.assert_called_once_with(timeout=10.0)
         ros2launch_parent._stop_event.set.assert_called_once()
         self.assertEqual(ros2launch_parent._active_nodes, [])
-        mock_logger.get_logger().info.assert_called_with(
-            "Shutting down the launch service"
-        )
+        mock_logger.get_logger().info.assert_called_with("Shutting down the launch service")
         mock_kill.assert_called_once()
 
     @patch("rclpy.logging")
@@ -214,9 +201,7 @@ class TestLauncher(unittest.TestCase):
         mock_process.terminate.assert_called_once()
         mock_process.join.assert_called_once_with(timeout=10.0)
         self.assertEqual(ros2launch_parent._active_nodes, [])
-        mock_logger.get_logger().info.assert_called_with(
-            "Shutting down the launch service"
-        )
+        mock_logger.get_logger().info.assert_called_with("Shutting down the launch service")
         mock_kill.assert_called_once()
 
     @patch("rclpy.logging")
@@ -254,9 +239,7 @@ class TestLauncher(unittest.TestCase):
 
     @patch("muto_composer.workflow.launcher.Node")
     @patch("launch.LaunchDescription.add_action")
-    def test_create_launch_description_for_added_nodes(
-        self, mock_add_action, mock_node
-    ):
+    def test_create_launch_description_for_added_nodes(self, mock_add_action, mock_node):
         added_nodes = {
             "node1": {
                 "name": "test_node",
@@ -293,9 +276,7 @@ class TestLauncher(unittest.TestCase):
             self.assertEqual(len(self.launch_parent._active_nodes), 1)
             self.assertEqual(self.launch_parent._active_nodes[0], {"node2": 5678})
 
-        self.logger_mock.info.assert_any_call(
-            "Sent SIGKILL to process node1 (PID 1234)"
-        )
+        self.logger_mock.info.assert_any_call("Sent SIGKILL to process node1 (PID 1234)")
 
     @patch("os.kill")
     def test_kill_multiple_nodes(self, mock_kill):
@@ -326,9 +307,7 @@ class TestLauncher(unittest.TestCase):
         with self.launch_parent._lock:
             self.assertEqual(len(self.launch_parent._active_nodes), 0)
 
-        self.logger_mock.info.assert_any_call(
-            "Process node1 (PID 1234) already terminated."
-        )
+        self.logger_mock.info.assert_any_call("Process node1 (PID 1234) already terminated.")
 
     @patch("os.kill", side_effect=PermissionError("No permission"))
     def test_kill_node_permission_error(self, mock_kill):
@@ -359,5 +338,4 @@ class TestLauncher(unittest.TestCase):
 
 
 if __name__ == "__main__":
-
     unittest.main()

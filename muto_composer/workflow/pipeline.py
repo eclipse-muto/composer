@@ -13,12 +13,14 @@
 
 import importlib
 import json
-import uuid
-from muto_msgs.msg._stack_manifest import StackManifest
+
 import rclpy
-from rclpy.node import Node
 import rclpy.logging
+from muto_msgs.msg._stack_manifest import StackManifest
+from rclpy.node import Node
+
 from muto_composer.workflow.safe_evaluator import SafeEvaluator
+
 
 class Pipeline:
     def __init__(self, name, steps, compensation):
@@ -64,9 +66,7 @@ class Pipeline:
                         plugin_class = getattr(module, plugin_name)
                         plugin_dict[plugin_name] = plugin_class
                     except AttributeError:
-                        self.logger.error(
-                            f"Plugin '{plugin_name}' not found in '{module_name}'"
-                        )
+                        self.logger.error(f"Plugin '{plugin_name}' not found in '{module_name}'")
                         raise Exception(
                             f"Plugin '{plugin_name}' not found in module '{module_name}'. "
                             "Ensure the plugin has a corresponding service definition."
@@ -116,25 +116,38 @@ class Pipeline:
                     evaluator = SafeEvaluator(self.context)
                     try:
                         should_execute = evaluator.eval_expr(condition)
-                        self.logger.debug(f"Evaluating condition for step '{step_name}': {condition} => {should_execute}")
+                        self.logger.debug(
+                            f"Evaluating condition for step '{step_name}': {condition} => {should_execute}"
+                        )
                         if not should_execute:
-                            self.logger.info(f"Skipping step '{step_name}' due to condition: {condition}")
+                            self.logger.info(
+                                f"Skipping step '{step_name}' due to condition: {condition}"
+                            )
                             continue
                     except ValueError as e:
-                        self.logger.error(f"Condition evaluation failed for step '{step_name}': {e}")
+                        self.logger.error(
+                            f"Condition evaluation failed for step '{step_name}': {e}"
+                        )
                         self.execute_compensation(executor)
                         failed = True
-                        self.logger.error("Aborting the rest of the pipeline due to condition evaluation failure.")
+                        self.logger.error(
+                            "Aborting the rest of the pipeline due to condition evaluation failure."
+                        )
                         break
 
                 try:
-
                     response = self.execute_step(step, executor, inputManifest=input_manifest)
                     if not response:
-                        response = type("Response", (), {"success": False, "err_msg": "No response from service."})()
+                        response = type(
+                            "Response",
+                            (),
+                            {"success": False, "err_msg": "No response from service."},
+                        )()
                         self.logger.error(f"Step {step_name} failed due to no response.")
                     # Store the response in context regardless of success or failure
-                    self.context[step_name] = type("Response", (), { "success": response.success, "err_msg": response.err_msg })()
+                    self.context[step_name] = type(
+                        "Response", (), {"success": response.success, "err_msg": response.err_msg}
+                    )()
 
                     if not response.success:
                         raise Exception(f"Step execution error: {response.err_msg}")
@@ -147,7 +160,6 @@ class Pipeline:
                     failed = True
                     self.logger.error("Aborting the rest of the pipeline")
                     break
-
 
         executor.destroy_node()
 
@@ -179,15 +191,13 @@ class Pipeline:
         self.logger.info(f"Executing step: {plugin_name}")
 
         if not cli.wait_for_service(timeout_sec=5.0):
-            self.logger.error(
-                f"Service '{cli.srv_name}' is not available. Cannot execute step."
-            )
+            self.logger.error(f"Service '{cli.srv_name}' is not available. Cannot execute step.")
             return None
 
         req = plugin.Request()
         if inputManifest:
             req.input.current = inputManifest
-            
+
         future = cli.call_async(req)
         rclpy.spin_until_future_complete(executor, future)
 
@@ -214,16 +224,16 @@ class Pipeline:
                     )
         else:
             self.logger.warn("No compensation steps to execute.")
-    
+
     def toStackManifest(self, manifest):
         if manifest is None:
             return None
         stack_msg = StackManifest()
         # Handle both old format (name at root) and new format (metadata.name)
         if isinstance(manifest, dict):
-            if 'metadata' in manifest and 'name' in manifest['metadata']:
-                stack_msg.name = manifest['metadata']['name']
+            if "metadata" in manifest and "name" in manifest["metadata"]:
+                stack_msg.name = manifest["metadata"]["name"]
             else:
                 stack_msg.name = manifest.get("name", "")
         stack_msg.stack = json.dumps(manifest)
-        return stack_msg       
+        return stack_msg

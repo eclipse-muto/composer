@@ -12,29 +12,30 @@
 #
 
 import logging
-import subprocess
 import os
 import re
+import subprocess
+
+import rclpy
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch_ros.actions import ComposableNodeContainer, LoadComposableNodes, Node
+from launch_ros.descriptions import ComposableNode
+
+import muto_composer.model.composable as composable
 import muto_composer.model.node as node
 import muto_composer.model.param as param
-import muto_composer.model.composable as composable
-import rclpy
 from muto_composer.introspection.introspector import Introspector
-from launch import LaunchDescription
-from launch_ros.actions import Node, LoadComposableNodes
-from launch_ros.actions import ComposableNodeContainer
-from launch_ros.descriptions import ComposableNode
-from ament_index_python.packages import get_package_share_directory
 
 logger = logging.getLogger(__name__)
 
-NOACTION = 'none'  # possibly PARAMACTION sometime in the future
-STARTACTION = 'start'
-STOPACTION = 'stop'
-LOADACTION = 'load'
+NOACTION = "none"  # possibly PARAMACTION sometime in the future
+STARTACTION = "start"
+STOPACTION = "stop"
+LOADACTION = "load"
 
 
-class Stack():
+class Stack:
     """The class that contains all stack related operations (apply, kill, stack, merge etc.)"""
 
     def __init__(self, manifest={}, parent=None):
@@ -47,11 +48,11 @@ class Stack():
 
         self.manifest = manifest
         self.parent = parent
-        self.name = manifest.get('name', '')
-        self.context = manifest.get('context', '')
-        self.stackId = manifest.get('stackId', '')
-        self.param = manifest.get('param', [])
-        self.arg = self.resolve_args(manifest.get('arg', []))
+        self.name = manifest.get("name", "")
+        self.context = manifest.get("context", "")
+        self.stackId = manifest.get("stackId", "")
+        self.param = manifest.get("param", [])
+        self.arg = self.resolve_args(manifest.get("arg", []))
 
         params = []
         for pDef in self.param:
@@ -64,15 +65,15 @@ class Stack():
         """Initialize the stack elements (nodes, composable nodes, parameters etc.)"""
 
         self.stack = []
-        referenced_stacks = self.manifest.get('stack', [])
+        referenced_stacks = self.manifest.get("stack", [])
 
         self.node = []
-        for nDef in self.manifest.get('node', []):
+        for nDef in self.manifest.get("node", []):
             sn = node.Node(self, nDef)
             self.node.append(sn)
 
         self.composable = []
-        for cDef in self.manifest.get('composable', []):
+        for cDef in self.manifest.get("composable", []):
             sn = composable.Container(self, cDef)
             self.composable.append(sn)
 
@@ -103,17 +104,17 @@ class Stack():
         """
         current_composables = {f"{c.namespace}/{c.name}": c for c in self.flatten_composable([])}
         other_composables = {f"{c.namespace}/{c.name}": c for c in other.flatten_composable([])}
-        
+
         common_keys = current_composables.keys() & other_composables.keys()
         added_keys = other_composables.keys() - current_composables.keys()
         removed_keys = current_composables.keys() - other_composables.keys()
-        
+
         common = [current_composables[key] for key in common_keys]
         added = [other_composables[key] for key in added_keys]
         removed = [current_composables[key] for key in removed_keys]
-    
+
         return common, added, removed
-    
+
     def flatten_nodes(self, list):
         """Flatten the nested structure of nodes in the stack.
 
@@ -130,7 +131,7 @@ class Stack():
                 s.flatten_nodes(list)
             return list
         except Exception as e:
-            logger.error(f'Exception occured in flatten_nodes: {e}')
+            logger.error(f"Exception occured in flatten_nodes: {e}")
 
     def flatten_composable(self, list):
         """Flatten the nested structure of composable nodes in the stack.
@@ -149,7 +150,7 @@ class Stack():
                 s.flatten_composable(list)
             return list
         except Exception as e:
-            logger.error(f'Exception occured in flatten_composable: {e}')
+            logger.error(f"Exception occured in flatten_composable: {e}")
 
     def calculate_ros_params_differences(self, current, other):
         """Calculate differences in ROS parameters between nodes of the current stack and another stack.
@@ -165,8 +166,7 @@ class Stack():
         for node_i in current.node:
             for node_j in other.node:
                 if node_i.exec == node_j.exec and node_i.pkg == node_j.pkg:
-                    diff = self.compare_ros_params(
-                        node_i.ros_params, node_j.ros_params)
+                    diff = self.compare_ros_params(node_i.ros_params, node_j.ros_params)
                     if diff:
                         differences[(node_i.name, node_j.name)] = diff
         return differences
@@ -202,7 +202,7 @@ class Stack():
             val2 = dict_params2.get(key, None)
 
             if val1 != val2:
-                diff_entry = {'key': key, 'in_node1': val1, 'in_node2': val2}
+                diff_entry = {"key": key, "in_node1": val1, "in_node2": val2}
                 diff.append(diff_entry)
 
         return diff
@@ -268,7 +268,7 @@ class Stack():
                 merged.composable.append(container)
 
         return merged
-    
+
     def compare_and_mark_nodes(self, current_container, other_container, merged):
         current_nodes = {(n.namespace, n.name): n for n in current_container.nodes}
         other_nodes = {(n.namespace, n.name): n for n in other_container.nodes}
@@ -277,23 +277,24 @@ class Stack():
             if key not in current_nodes:
                 node.action = STARTACTION
             else:
-                node.action = NOACTION 
+                node.action = NOACTION
 
         for key, node in current_nodes.items():
             if key not in other_nodes:
                 node.action = STOPACTION
             else:
-
                 if node.action != STARTACTION:
                     node.action = NOACTION
 
         # Add processed nodes back into their respective containers
-        processed_container = other_container if other_container in merged.composable else current_container
-        processed_container.nodes = list(current_nodes.values()) + [n for n in other_nodes.values() if n.action == STARTACTION]
+        processed_container = (
+            other_container if other_container in merged.composable else current_container
+        )
+        processed_container.nodes = list(current_nodes.values()) + [
+            n for n in other_nodes.values() if n.action == STARTACTION
+        ]
         if processed_container not in merged.composable:
             merged.composable.append(processed_container)
-
-
 
     def _merge_params(self, merged, other):
         other_params = {param.name: param.value for param in other.param}
@@ -307,7 +308,7 @@ class Stack():
         Returns:
             list: A list of active nodes.
         """
-        n = rclpy.create_node('get_active_nodes', enable_rosout=False)
+        n = rclpy.create_node("get_active_nodes", enable_rosout=False)
         n_list = n.get_node_names_and_namespaces()
         n.destroy_node()
         return n_list
@@ -338,7 +339,7 @@ class Stack():
                 for exec_name, pid in e.items():
                     if n.exec in exec_name and n.action == STOPACTION:
                         intrspc.kill(exec_name, pid)
-                        
+
         # Kill composables
         for container in stack.composable:
             for cn in container.nodes:
@@ -356,20 +357,30 @@ class Stack():
         try:
             for key, val in param_differences.items():
                 for i in range(len(val)):
-                    subprocess.run(['ros2', 'param', 'set', str(key[0]), str(
-                        val[i]['key']), str(val[i]['in_node1'])])
+                    subprocess.run(
+                        [
+                            "ros2",
+                            "param",
+                            "set",
+                            str(key[0]),
+                            str(val[i]["key"]),
+                            str(val[i]["in_node1"]),
+                        ]
+                    )
         except Exception as e:
-            logger.error(f'Exception occurred while changing parameters at runtime: {e}')
+            logger.error(f"Exception occurred while changing parameters at runtime: {e}")
 
     def toShallowManifest(self):
-        manifest = {"name": self.name,
-                    "context": self.context,
-                    "stackId": self.stackId,
-                    "param": [],
-                    "arg": [],
-                    "stack": [],
-                    "composable": [],
-                    "node": []}
+        manifest = {
+            "name": self.name,
+            "context": self.context,
+            "stackId": self.stackId,
+            "param": [],
+            "arg": [],
+            "stack": [],
+            "composable": [],
+            "node": [],
+        }
         return manifest
 
     def toManifest(self):
@@ -400,11 +411,11 @@ class Stack():
         Returns:
             list: List of processed remaps.
         """
-        return [(rmp['from'], rmp['to']) for rmp in remaps_config] if remaps_config else []
+        return [(rmp["from"], rmp["to"]) for rmp in remaps_config] if remaps_config else []
 
     def should_node_run(self, node, launcher):
-        """Check if a node should run. 
-        This method clears the situation where a 
+        """Check if a node should run.
+        This method clears the situation where a
         node has NOACTION but it isn't running
         NOACTION is meant to keep the common processes alive when switching stacks
 
@@ -415,31 +426,32 @@ class Stack():
         Returns:
             bool: True if the node should run, False otherwise.
         """
-        active_nodes = [(active[1] if active[1] != '/' else '') +
-                        '/' + active[0] for active in launcher._active_nodes]
-        
-        should_node_run = f'{node.namespace}/{node.name}' not in active_nodes 
+        active_nodes = [
+            (active[1] if active[1] != "/" else "") + "/" + active[0]
+            for active in launcher._active_nodes
+        ]
+
+        should_node_run = f"{node.namespace}/{node.name}" not in active_nodes
         return should_node_run
 
     def load_common_composables(self, container, launch_description: LaunchDescription):
         """If there are common containers in stack composables, load them onto the existing container
-        Args: 
+        Args:
             container (object): The container object
         """
         node_desc = []
         for cn in container.nodes:
             if cn.action == LOADACTION:
                 logger.debug(f"LOADING {cn.namespace}/{cn.name}")
-                node_desc.append(ComposableNode(
-                    package=cn.pkg,
-                    name=cn.name,
-                    namespace=cn.namespace,
-                    plugin=cn.plugin
-                ))
+                node_desc.append(
+                    ComposableNode(
+                        package=cn.pkg, name=cn.name, namespace=cn.namespace, plugin=cn.plugin
+                    )
+                )
 
         if node_desc:
             load_action = LoadComposableNodes(
-                target_container=f'{container.namespace}/{container.name}',
+                target_container=f"{container.namespace}/{container.name}",
                 composable_node_descriptions=[node_desc],
             )
             launch_description.add_action(load_action)
@@ -452,8 +464,19 @@ class Stack():
             launch_description (object): The launch description object.
         """
         for c in composable_containers:
-            node_desc = [ComposableNode(package=cn.pkg, plugin=cn.plugin, name=cn.name, namespace=cn.namespace, parameters=cn.ros_params, remappings=self.process_remaps(cn.remap))
-                         for cn in c.nodes if cn.action == STARTACTION or (cn.action == NOACTION and self.should_node_run(cn, launcher))]
+            node_desc = [
+                ComposableNode(
+                    package=cn.pkg,
+                    plugin=cn.plugin,
+                    name=cn.name,
+                    namespace=cn.namespace,
+                    parameters=cn.ros_params,
+                    remappings=self.process_remaps(cn.remap),
+                )
+                for cn in c.nodes
+                if cn.action == STARTACTION
+                or (cn.action == NOACTION and self.should_node_run(cn, launcher))
+            ]
 
             if node_desc:  # If node_desc is not empty
                 container = ComposableNodeContainer(
@@ -480,16 +503,18 @@ class Stack():
             if action == "":
                 action = NOACTION
             if action == STARTACTION or (action == NOACTION and self.should_node_run(n, launcher)):
-                launch_description.add_action(Node(
-                    package=n.pkg,
-                    executable=n.exec,
-                    name=n.name,
-                    namespace=n.namespace,
-                    output=n.output,
-                    parameters=n.ros_params,
-                    arguments=n.args.split(),
-                    remappings=self.process_remaps(n.remap)
-                ))
+                launch_description.add_action(
+                    Node(
+                        package=n.pkg,
+                        executable=n.exec,
+                        name=n.name,
+                        namespace=n.namespace,
+                        output=n.output,
+                        parameters=n.ros_params,
+                        arguments=n.args.split(),
+                        remappings=self.process_remaps(n.remap),
+                    )
+                )
 
     def handle_managed_nodes(self, nodes, verb):
         """Handle regular nodes during stack launching.
@@ -512,18 +537,17 @@ class Stack():
         launch_description = LaunchDescription()
 
         try:
-            self.handle_composable_nodes(
-                self.composable, launch_description, launcher)
+            self.handle_composable_nodes(self.composable, launch_description, launcher)
             self.handle_regular_nodes(self.node, launch_description, launcher)
 
         except Exception as e:
-            logger.error(f'Stack launching ended with exception: {e}')
+            logger.error(f"Stack launching ended with exception: {e}")
 
         launcher.start(launch_description)
         all_nodes = self.node + [cn for c in self.composable for cn in c.nodes]
 
         # After nodes are launched, take care of managed node actions
-        self.handle_managed_nodes(all_nodes, verb='start')  
+        self.handle_managed_nodes(all_nodes, verb="start")
 
     def apply(self, launcher):
         """Apply the stack.
@@ -544,7 +568,7 @@ class Stack():
             str: The resolved value.
         """
         value = str(value)
-        expressions = re.findall(r'\$\(([\s0-9a-zA-Z_-]+)\)', value)
+        expressions = re.findall(r"\$\(([\s0-9a-zA-Z_-]+)\)", value)
         result = value
 
         for expression in expressions:
@@ -552,42 +576,42 @@ class Stack():
             resolved_value = ""
 
             try:
-                if expr == 'find':
+                if expr == "find":
                     resolved_value = get_package_share_directory(var)
-                elif expr == 'env':
+                elif expr == "env":
                     resolved_value = os.environ[var]
-                elif expr == 'optenv':
-                    resolved_value = os.environ.get(var, '')
-                elif expr == 'arg':
+                elif expr == "optenv":
+                    resolved_value = os.environ.get(var, "")
+                elif expr == "arg":
                     arg_value = self.arg.get(var)
                     if arg_value is not None:
-                        resolved_value = arg_value['value']
-                elif expr == 'eval':
-                    raise NotImplementedError(
-                        f"Value: {value} is not supported in Muto")
+                        resolved_value = arg_value["value"]
+                elif expr == "eval":
+                    raise NotImplementedError(f"Value: {value} is not supported in Muto")
                 else:
                     continue
 
                 result = re.sub(
-                    r'\$\(' + re.escape(expression) + r'\)', resolved_value, result, count=1)
+                    r"\$\(" + re.escape(expression) + r"\)", resolved_value, result, count=1
+                )
             except KeyError:
-                raise Exception(f"{var} does not exist", 'param')
+                raise Exception(f"{var} does not exist", "param")
             except Exception as e:
-                logger.error(f'Exception occurred: {e}')
+                logger.error(f"Exception occurred: {e}")
 
         return result
 
     def resolve_param_expression(self, param={}):
-        name = ''
+        name = ""
         value = None
         valKey = None
         for k in param.keys():
-            if 'name' == k:
-                name = param['name']
+            if k == "name":
+                name = param["name"]
             else:
                 value = param[k]
                 valKey = k
-        if not valKey is None:
+        if valKey is not None:
             return (name, valKey, self.resolve_expression(value))
         return None
 

@@ -13,8 +13,8 @@
 
 import rclpy
 from muto_msgs.srv import ProvisionPlugin
+
 from .base_plugin import BasePlugin, StackOperation
-from muto_composer.utils.paths import WORKSPACES_PATH, ARTIFACT_STATE_FILE
 
 
 class MutoProvisionPlugin(BasePlugin):
@@ -44,10 +44,9 @@ class MutoProvisionPlugin(BasePlugin):
             self.get_logger().error(f"Exception: {e}")
             response.err_msg = f"Error: {e}"
             response.success = False
-            
+
         response.output.current = request.input.current
         return response
-
 
 
 def main():

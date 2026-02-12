@@ -12,14 +12,15 @@
 #
 
 
-import sys
 import os
+import sys
+
 from launch import LaunchContext
-from launch.actions import IncludeLaunchDescription, GroupAction
-from launch_ros.actions import Node, ComposableNodeContainer
-from launch_ros.descriptions import ComposableNode
+from launch.actions import GroupAction, IncludeLaunchDescription
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.utilities import perform_substitutions
+from launch_ros.actions import ComposableNodeContainer, Node
+from launch_ros.descriptions import ComposableNode
 
 BLUE = "\033[94m"
 GREEN = "\033[92m"
@@ -39,9 +40,7 @@ def resolve_substitutions(context, value):
     return str(value)
 
 
-def recursively_extract_entities(
-    entities, context, nodes, composable_nodes, containers
-):
+def recursively_extract_entities(entities, context, nodes, composable_nodes, containers):
     for entity in entities:
         try:
             if isinstance(entity, IncludeLaunchDescription):
@@ -63,15 +62,11 @@ def recursively_extract_entities(
                         resolved_executable = resolve_substitutions(
                             context, entity._Node__node_executable
                         )
-                        resolved_name = resolve_substitutions(
-                            context, entity._Node__node_name
-                        )
+                        resolved_name = resolve_substitutions(context, entity._Node__node_name)
                         resolved_namespace = resolve_substitutions(
                             context, entity._Node__node_namespace
                         )
-                        resolved_package = resolve_substitutions(
-                            context, entity._Node__package
-                        )
+                        resolved_package = resolve_substitutions(context, entity._Node__package)
                         print(
                             f"Found Node: {GREEN}{resolved_executable} {RESET} with the full name: {BLUE}{resolved_namespace or entity._Node__namespace}/{resolved_name or entity._Node__name} {RESET} within package{YELLOW}: {resolved_package}"
                         )
@@ -127,10 +122,7 @@ def main():
     composable_nodes = []
     containers = []
 
-    recursively_extract_entities(
-        ld.entities, context, nodes, composable_nodes, containers
-    )
-
+    recursively_extract_entities(ld.entities, context, nodes, composable_nodes, containers)
 
 
 if __name__ == "__main__":

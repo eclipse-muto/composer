@@ -18,19 +18,20 @@ Provides persistent storage of stack deployment states to enable
 rollback to previous versions when deployments fail.
 """
 
+import copy
 import json
 import os
-import copy
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, Any, Optional
 from enum import Enum
+from typing import Any
 
 from muto_composer.utils.paths import get_state_path
 
 
 class DeploymentStatus(Enum):
     """Deployment status enumeration."""
+
     PENDING = "pending"
     DEPLOYING = "deploying"
     RUNNING = "running"
@@ -42,19 +43,20 @@ class DeploymentStatus(Enum):
 @dataclass
 class StackState:
     """Represents the persistent state of a stack deployment."""
+
     stack_id: str = ""
     stack_name: str = ""
     current_version: str = ""
     previous_version: str = ""
-    current_stack: Optional[Dict[str, Any]] = None
-    previous_stack: Optional[Dict[str, Any]] = None
+    current_stack: dict[str, Any] | None = None
+    previous_stack: dict[str, Any] | None = None
     status: str = DeploymentStatus.PENDING.value
     deployed_at: str = ""
     last_updated: str = ""
     error_message: str = ""
     rollback_count: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "stack_id": self.stack_id,
@@ -71,7 +73,7 @@ class StackState:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "StackState":
+    def from_dict(cls, data: dict[str, Any]) -> "StackState":
         """Create StackState from dictionary."""
         return cls(
             stack_id=data.get("stack_id", ""),
@@ -122,14 +124,14 @@ class StatePersistence:
         """Get the state file path for a specific stack."""
         return os.path.join(self._get_stack_state_dir(stack_name), self.STATE_FILENAME)
 
-    def _get_version_from_stack(self, stack: Optional[Dict[str, Any]]) -> str:
+    def _get_version_from_stack(self, stack: dict[str, Any] | None) -> str:
         """Extract version from stack metadata."""
         if not stack:
             return ""
         metadata = stack.get("metadata", {})
         return metadata.get("version", metadata.get("name", "unknown"))
 
-    def _get_stack_id_from_stack(self, stack: Optional[Dict[str, Any]]) -> str:
+    def _get_stack_id_from_stack(self, stack: dict[str, Any] | None) -> str:
         """Extract stack ID from stack."""
         if not stack:
             return ""
@@ -143,7 +145,7 @@ class StatePersistence:
             return metadata["name"]
         return stack.get("name", "")
 
-    def load_state(self, stack_name: str) -> Optional[StackState]:
+    def load_state(self, stack_name: str) -> StackState | None:
         """
         Load the persisted state for a stack.
 
@@ -161,7 +163,7 @@ class StatePersistence:
             return None
 
         try:
-            with open(state_path, "r", encoding="utf-8") as f:
+            with open(state_path, encoding="utf-8") as f:
                 data = json.load(f)
             state = StackState.from_dict(data)
             if self.logger:
@@ -201,7 +203,7 @@ class StatePersistence:
                 self.logger.error(f"Failed to save state for {stack_name}: {e}")
             return False
 
-    def get_previous_stack(self, stack_name: str) -> Optional[Dict[str, Any]]:
+    def get_previous_stack(self, stack_name: str) -> dict[str, Any] | None:
         """
         Get the previous stack definition for rollback.
 
@@ -218,7 +220,7 @@ class StatePersistence:
             return state.previous_stack
         return None
 
-    def mark_deployment_started(self, stack_name: str, next_stack: Dict[str, Any]) -> bool:
+    def mark_deployment_started(self, stack_name: str, next_stack: dict[str, Any]) -> bool:
         """
         Mark deployment as started and save current stack as previous.
 
@@ -278,7 +280,9 @@ class StatePersistence:
         state.error_message = ""
 
         if self.logger:
-            self.logger.info(f"Deployment completed for {stack_name}: version {state.current_version}")
+            self.logger.info(
+                f"Deployment completed for {stack_name}: version {state.current_version}"
+            )
 
         return self.save_state(stack_name, state)
 
@@ -336,8 +340,7 @@ class StatePersistence:
 
         if self.logger:
             self.logger.info(
-                f"Rollback completed for {stack_name}: "
-                f"restored version {state.current_version}"
+                f"Rollback completed for {stack_name}: restored version {state.current_version}"
             )
 
         return self.save_state(stack_name, state)
@@ -355,7 +358,7 @@ class StatePersistence:
         state = self.load_state(stack_name)
         return state is not None and state.previous_stack is not None
 
-    def get_all_stack_states(self) -> Dict[str, StackState]:
+    def get_all_stack_states(self) -> dict[str, StackState]:
         """
         Get states for all tracked stacks.
 
@@ -390,7 +393,7 @@ class StatePersistence:
         """Get the path to the global active deployment state file."""
         return os.path.join(self._state_root, self.ACTIVE_STATE_DIR, self.STATE_FILENAME)
 
-    def load_active_state(self) -> Optional[StackState]:
+    def load_active_state(self) -> StackState | None:
         """
         Load the global active deployment state.
 
@@ -407,11 +410,13 @@ class StatePersistence:
             return None
 
         try:
-            with open(state_path, "r", encoding="utf-8") as f:
+            with open(state_path, encoding="utf-8") as f:
                 data = json.load(f)
             state = StackState.from_dict(data)
             if self.logger:
-                self.logger.debug(f"Loaded active state: {state.stack_name}, status: {state.status}")
+                self.logger.debug(
+                    f"Loaded active state: {state.stack_name}, status: {state.status}"
+                )
             return state
         except (OSError, json.JSONDecodeError) as e:
             if self.logger:
@@ -446,7 +451,7 @@ class StatePersistence:
                 self.logger.error(f"Failed to save active state: {e}")
             return False
 
-    def mark_active_deployment_started(self, next_stack: Dict[str, Any]) -> bool:
+    def mark_active_deployment_started(self, next_stack: dict[str, Any]) -> bool:
         """
         Mark a new deployment as started in the global active state.
 
@@ -490,7 +495,7 @@ class StatePersistence:
 
         return self.save_active_state(state)
 
-    def _get_stack_name_from_stack(self, stack: Optional[Dict[str, Any]]) -> Optional[str]:
+    def _get_stack_name_from_stack(self, stack: dict[str, Any] | None) -> str | None:
         """Extract stack name from stack definition."""
         if not stack:
             return None
@@ -514,7 +519,9 @@ class StatePersistence:
         state.error_message = ""
 
         if self.logger:
-            self.logger.info(f"Active deployment completed: {state.stack_name} v{state.current_version}")
+            self.logger.info(
+                f"Active deployment completed: {state.stack_name} v{state.current_version}"
+            )
 
         return self.save_active_state(state)
 
@@ -540,7 +547,7 @@ class StatePersistence:
 
         return self.save_active_state(state)
 
-    def get_active_previous_stack(self) -> Optional[Dict[str, Any]]:
+    def get_active_previous_stack(self) -> dict[str, Any] | None:
         """
         Get the previous stack from the global active state for rollback.
 

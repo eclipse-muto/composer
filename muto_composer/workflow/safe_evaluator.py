@@ -14,11 +14,13 @@
 import ast
 import operator as op
 
+
 class SafeEvaluator:
     """
     A safe evaluator for simple expressions used in conditions.
     Supports basic comparisons and logical operations.
     """
+
     operators = {
         ast.Eq: op.eq,
         ast.NotEq: op.ne,
@@ -39,7 +41,7 @@ class SafeEvaluator:
         Evaluate an expression in the given context.
         """
         try:
-            expr_ast = ast.parse(expr, mode='eval').body
+            expr_ast = ast.parse(expr, mode="eval").body
             return self._eval(expr_ast)
         except Exception as e:
             raise ValueError(f"Invalid condition expression '{expr}': {e}")

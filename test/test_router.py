@@ -20,7 +20,6 @@ from muto_composer.workflow.router import Router
 
 
 class TestRouter(unittest.TestCase):
-
     def setUp(self):
         self.pipelines = {
             "start": MagicMock(),
@@ -53,9 +52,7 @@ class TestRouter(unittest.TestCase):
         main_route = Router(self.pipelines)
         main_route.route(self.payload.get("action", ""))
         self.pipeline.execute_pipeline.assert_not_called()
-        mock_logging.get_logger().warn.assert_called_once_with(
-            "No pipeline found for action: kill"
-        )
+        mock_logging.get_logger().warn.assert_called_once_with("No pipeline found for action: kill")
 
 
 if __name__ == "__main__":

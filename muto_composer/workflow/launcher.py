@@ -12,24 +12,20 @@
 #
 
 
+import asyncio
+import concurrent.futures
+import multiprocessing
 import os
 import signal
-import launch
-import multiprocessing
-import concurrent.futures
-import rclpy.logging
 from collections import OrderedDict
-from typing import (
-    List,
-    Text,
-    Tuple,
-    Dict
-)
+
+import launch
+import rclpy.logging
 from launch import LaunchDescription, LaunchService
-import asyncio
 from launch.actions import RegisterEventHandler
-from launch.event_handlers import OnProcessStart, OnProcessExit
+from launch.event_handlers import OnProcessExit, OnProcessStart
 from launch_ros.actions import Node
+
 from muto_composer.introspection.model.difference import Difference
 
 
@@ -51,7 +47,7 @@ class Ros2LaunchParent:
         # Cleanly shut down the multiprocessing manager
         self.manager.shutdown()
 
-    def parse_launch_arguments(self, launch_arguments: List[Text]) -> List[Tuple[Text, Text]]:
+    def parse_launch_arguments(self, launch_arguments: list[str]) -> list[tuple[str, str]]:
         """
         Parse the given launch arguments from the command line into a list of (key, value) pairs.
 
@@ -60,12 +56,12 @@ class Ros2LaunchParent:
         """
         parsed_launch_arguments = OrderedDict()
         for argument in launch_arguments:
-            count = argument.count(':=')
-            if count == 0 or argument.startswith(':=') or (count == 1 and argument.endswith(':=')):
+            count = argument.count(":=")
+            if count == 0 or argument.startswith(":=") or (count == 1 and argument.endswith(":=")):
                 raise RuntimeError(
                     f"malformed launch argument '{argument}', expected format '<name>:=<value>'"
                 )
-            name, value = argument.split(':=', maxsplit=1)
+            name, value = argument.split(":=", maxsplit=1)
             # If the same argument name appears multiple times, last one wins
             parsed_launch_arguments[name] = value
         return parsed_launch_arguments.items()
@@ -77,7 +73,8 @@ class Ros2LaunchParent:
         """
         self._stop_event = multiprocessing.Event()
         self._process = multiprocessing.Process(
-            target=self._run_process, args=(self._stop_event, launch_description), daemon=True)
+            target=self._run_process, args=(self._stop_event, launch_description), daemon=True
+        )
         self._process.start()
 
     def _run_process(self, stop_event, launch_description):
@@ -93,7 +90,7 @@ class Ros2LaunchParent:
             RegisterEventHandler(
                 OnProcessStart(
                     on_start=lambda event, context: self._event_handler(
-                        'start', event, self._active_nodes, self._lock
+                        "start", event, self._active_nodes, self._lock
                     )
                 )
             )
@@ -102,7 +99,7 @@ class Ros2LaunchParent:
             RegisterEventHandler(
                 OnProcessExit(
                     on_exit=lambda event, context: self._event_handler(
-                        'exit', event, self._active_nodes, self._lock
+                        "exit", event, self._active_nodes, self._lock
                     )
                 )
             )
@@ -138,14 +135,13 @@ class Ros2LaunchParent:
         finally:
             loop.close()
 
-
     async def launch_a_launch_file(
         self,
         launch_file_path: str,
-        launch_file_arguments: List[str],
+        launch_file_arguments: list[str],
         noninteractive: bool = False,
         debug: bool = False,
-        dry_run: bool = False
+        dry_run: bool = False,
     ):
         """
         Launch a given launch file (by path) and pass it the given launch file arguments.
@@ -163,27 +159,25 @@ class Ros2LaunchParent:
         )
 
         launch_service = launch.LaunchService(
-            argv=launch_file_arguments,
-            noninteractive=noninteractive,
-            debug=debug
+            argv=launch_file_arguments, noninteractive=noninteractive, debug=debug
         )
 
         parsed_launch_arguments = self.parse_launch_arguments(launch_file_arguments)
 
-        launch_description = launch.LaunchDescription([
-            launch.actions.IncludeLaunchDescription(
-                launch.launch_description_sources.AnyLaunchDescriptionSource(
-                    launch_file_path
+        launch_description = launch.LaunchDescription(
+            [
+                launch.actions.IncludeLaunchDescription(
+                    launch.launch_description_sources.AnyLaunchDescriptionSource(launch_file_path),
+                    launch_arguments=parsed_launch_arguments,
                 ),
-                launch_arguments=parsed_launch_arguments,
-            ),
-        ])
+            ]
+        )
 
         launch_description.add_action(
             RegisterEventHandler(
                 OnProcessStart(
                     on_start=lambda event, context: self._event_handler(
-                        'start', event, self._active_nodes, self._lock
+                        "start", event, self._active_nodes, self._lock
                     )
                 )
             )
@@ -192,7 +186,7 @@ class Ros2LaunchParent:
             RegisterEventHandler(
                 OnProcessExit(
                     on_exit=lambda event, context: self._event_handler(
-                        'exit', event, self._active_nodes, self._lock
+                        "exit", event, self._active_nodes, self._lock
                     )
                 )
             )
@@ -209,10 +203,10 @@ class Ros2LaunchParent:
     async def launch_a_launch_description(
         self,
         launch_description: launch.LaunchDescription,
-        launch_file_arguments: List[str] = None,
+        launch_file_arguments: list[str] = None,
         noninteractive: bool = False,
         debug: bool = False,
-        dry_run: bool = False
+        dry_run: bool = False,
     ):
         """
         Launch a given LaunchDescription with optional arguments.
@@ -233,9 +227,7 @@ class Ros2LaunchParent:
         )
 
         launch_service = launch.LaunchService(
-            argv=launch_file_arguments,
-            noninteractive=noninteractive,
-            debug=debug
+            argv=launch_file_arguments, noninteractive=noninteractive, debug=debug
         )
 
         # Register the same event handlers so we can track node processes
@@ -243,7 +235,7 @@ class Ros2LaunchParent:
             RegisterEventHandler(
                 OnProcessStart(
                     on_start=lambda event, context: self._event_handler(
-                        'start', event, self._active_nodes, self._lock
+                        "start", event, self._active_nodes, self._lock
                     )
                 )
             )
@@ -252,7 +244,7 @@ class Ros2LaunchParent:
             RegisterEventHandler(
                 OnProcessExit(
                     on_exit=lambda event, context: self._event_handler(
-                        'exit', event, self._active_nodes, self._lock
+                        "exit", event, self._active_nodes, self._lock
                     )
                 )
             )
@@ -323,7 +315,7 @@ class Ros2LaunchParent:
                 )
                 self._process.terminate()
 
-    def kill_nodes_by_name(self, node_names: List[str]):
+    def kill_nodes_by_name(self, node_names: list[str]):
         """
         Kills only the active nodes whose process_name is in node_names.
         If your node names differ from the process_name assigned by ROS 2,
@@ -367,7 +359,9 @@ class Ros2LaunchParent:
 
         # Optionally, if no nodes remain, shut down the service
         if not self._active_nodes and self._process:
-            rclpy.logging.get_logger("muto_launch_parent").info("All requested nodes killed, shutting down the launch service.")
+            rclpy.logging.get_logger("muto_launch_parent").info(
+                "All requested nodes killed, shutting down the launch service."
+            )
             if self._stop_event:
                 self._stop_event.set()
             self._process.join(timeout=10.0)
@@ -383,28 +377,27 @@ class Ros2LaunchParent:
         Maintains a list of active nodes as a shared list of dicts: [{process_name: pid}, ...]
         """
         with lock:
-            if action == 'start':
+            if action == "start":
                 rclpy.logging.get_logger("muto_launch_parent").info(
                     f"Node started: {event.process_name} with PID {event.pid}"
                 )
                 nodes_list.append({event.process_name: event.pid})
-            elif action == 'exit':
+            elif action == "exit":
                 rclpy.logging.get_logger("muto_launch_parent").info(
                     f"Node exited: {event.process_name} with PID {event.pid}"
                 )
                 nodes_list[:] = [
-                    node for node in nodes_list
-                    if node.get(event.process_name) != event.pid
+                    node for node in nodes_list if node.get(event.process_name) != event.pid
                 ]
 
         rclpy.logging.get_logger("muto_launch_parent").info(
             f"Active nodes after {action}: {nodes_list}"
         )
-        if not nodes_list and action == 'exit':
+        if not nodes_list and action == "exit":
             self.shutdown()
 
     def create_launch_description_for_added_nodes(
-        self, added_nodes: Dict[str, Dict[str, str]]
+        self, added_nodes: dict[str, dict[str, str]]
     ) -> launch.LaunchDescription:
         """
         Given 'added_nodes' from Delta, build a LaunchDescription with all the new Node actions.
@@ -438,7 +431,9 @@ class Ros2LaunchParent:
 
         return ld
 
-    def apply_delta(self, diff_result: Difference, extra_args: List[str], async_loop: asyncio.AbstractEventLoop):
+    def apply_delta(
+        self, diff_result: Difference, extra_args: list[str], async_loop: asyncio.AbstractEventLoop
+    ):
         """
         Orchestrates:
           - Launching all 'added' nodes
@@ -457,9 +452,7 @@ class Ros2LaunchParent:
 
             async def _launch():
                 await self.launch_a_launch_description(
-                    ld,
-                    launch_file_arguments=extra_args,
-                    noninteractive=True
+                    ld, launch_file_arguments=extra_args, noninteractive=True
                 )
 
             asyncio.run_coroutine_threadsafe(_launch(), async_loop)

@@ -16,18 +16,18 @@ Event system for the refactored Muto Composer.
 Provides event-driven communication between subsystems.
 """
 
-import uuid
 import asyncio
+import uuid
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from enum import Enum
-from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, List, Callable
-from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 
 class EventType(Enum):
     """Enumeration of all event types in the composer system."""
-    
+
     # Stack Events
     STACK_REQUEST = "stack.request"
     STACK_ANALYZED = "stack.analyzed"
@@ -35,7 +35,7 @@ class EventType(Enum):
     STACK_MERGED = "stack.merged"
     STACK_VALIDATED = "stack.validated"
     STACK_TRANSFORMED = "stack.transformed"
-    
+
     # Orchestration Events
     ORCHESTRATION_STARTED = "orchestration.started"
     ORCHESTRATION_COMPLETED = "orchestration.completed"
@@ -45,7 +45,7 @@ class EventType(Enum):
     ROLLBACK_STARTED = "orchestration.rollback.started"
     ROLLBACK_COMPLETED = "orchestration.rollback.completed"
     ROLLBACK_FAILED = "orchestration.rollback.failed"
-    
+
     # Pipeline Events
     PIPELINE_REQUESTED = "pipeline.requested"
     PIPELINE_START = "pipeline.start"
@@ -58,7 +58,7 @@ class EventType(Enum):
     PIPELINE_ERROR = "pipeline.error"
     PIPELINE_FAILED = "pipeline.failed"
     PIPELINE_COMPENSATION_STARTED = "pipeline.compensation.started"
-    
+
     # Plugin Operation Events
     COMPOSE_REQUESTED = "compose.requested"
     COMPOSE_COMPLETED = "compose.completed"
@@ -66,7 +66,7 @@ class EventType(Enum):
     PROVISION_COMPLETED = "provision.completed"
     LAUNCH_REQUESTED = "launch.requested"
     LAUNCH_COMPLETED = "launch.completed"
-    
+
     # System Events
     TWIN_UPDATE = "twin.update"
     TWIN_SYNC_REQUESTED = "twin.sync.requested"
@@ -79,24 +79,30 @@ class EventType(Enum):
 
 class BaseComposeEvent:
     """Base class for all composer events."""
-    
-    def __init__(self, event_type: EventType, source_component: str, 
-                 event_id: Optional[str] = None, timestamp: Optional[datetime] = None,
-                 correlation_id: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None,
-                 # Common attributes used across multiple event types
-                 stack_payload: Optional[Dict[str, Any]] = None,
-                 stack_name: Optional[str] = None,
-                 action: Optional[str] = None,
-                 pipeline_name: Optional[str] = None,
-                 execution_context: Optional[Dict[str, Any]] = None,
-                 orchestration_id: Optional[str] = None):
+
+    def __init__(
+        self,
+        event_type: EventType,
+        source_component: str,
+        event_id: str | None = None,
+        timestamp: datetime | None = None,
+        correlation_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        # Common attributes used across multiple event types
+        stack_payload: dict[str, Any] | None = None,
+        stack_name: str | None = None,
+        action: str | None = None,
+        pipeline_name: str | None = None,
+        execution_context: dict[str, Any] | None = None,
+        orchestration_id: str | None = None,
+    ):
         self.event_type = event_type
         self.source_component = source_component
         self.event_id = event_id or str(uuid.uuid4())
         self.timestamp = timestamp or datetime.now()
         self.correlation_id = correlation_id
         self.metadata = metadata or {}
-        
+
         # Common attributes
         self.stack_payload = stack_payload or {}
         self.stack_name = stack_name
@@ -108,33 +114,47 @@ class BaseComposeEvent:
 
 class StackRequestEvent(BaseComposeEvent):
     """Event triggered when a stack operation is requested."""
-    
-    def __init__(self, event_type: EventType, source_component: str, stack_name: str, action: str,
-                 stack_payload: Optional[Dict[str, Any]] = None, **kwargs):
+
+    def __init__(
+        self,
+        event_type: EventType,
+        source_component: str,
+        stack_name: str,
+        action: str,
+        stack_payload: dict[str, Any] | None = None,
+        **kwargs,
+    ):
         super().__init__(
-            event_type=event_type, 
-            source_component=source_component, 
+            event_type=event_type,
+            source_component=source_component,
             stack_name=stack_name,
             action=action,
             stack_payload=stack_payload,
-            **kwargs
+            **kwargs,
         )
 
 
 class StackAnalyzedEvent(BaseComposeEvent):
     """Event triggered when stack analysis is complete."""
-    
-    def __init__(self, event_type: EventType, source_component: str, stack_name: str, action: str,
-                 analysis_result: Optional[Dict[str, Any]] = None,
-                 processing_requirements: Optional[Dict[str, Any]] = None,
-                 stack_payload: Optional[Dict[str, Any]] = None, **kwargs):
+
+    def __init__(
+        self,
+        event_type: EventType,
+        source_component: str,
+        stack_name: str,
+        action: str,
+        analysis_result: dict[str, Any] | None = None,
+        processing_requirements: dict[str, Any] | None = None,
+        stack_payload: dict[str, Any] | None = None,
+        **kwargs,
+    ):
         super().__init__(
-            event_type=event_type, 
-            source_component=source_component, 
+            event_type=event_type,
+            source_component=source_component,
             stack_name=stack_name,
             action=action,
             stack_payload=stack_payload,
-            **kwargs
+            **kwargs,
         )
         self.analysis_result = analysis_result or {}
         self.processing_requirements = processing_requirements or {}
@@ -144,18 +164,23 @@ class StackAnalyzedEvent(BaseComposeEvent):
 
 class StackMergedEvent(BaseComposeEvent):
     """Event triggered when stacks are merged."""
-    
-    def __init__(self, event_type: EventType, source_component: str,
-                 current_stack: Optional[Dict[str, Any]] = None,
-                 next_stack: Optional[Dict[str, Any]] = None,
-                 stack_payload: Optional[Dict[str, Any]] = None,
-                 merge_strategy: str = "intelligent_merge",
-                 conflicts_resolved: Optional[Dict[str, Any]] = None, **kwargs):
+
+    def __init__(
+        self,
+        event_type: EventType,
+        source_component: str,
+        current_stack: dict[str, Any] | None = None,
+        next_stack: dict[str, Any] | None = None,
+        stack_payload: dict[str, Any] | None = None,
+        merge_strategy: str = "intelligent_merge",
+        conflicts_resolved: dict[str, Any] | None = None,
+        **kwargs,
+    ):
         super().__init__(
-            event_type=event_type, 
-            source_component=source_component, 
+            event_type=event_type,
+            source_component=source_component,
             stack_payload=stack_payload,
-            **kwargs
+            **kwargs,
         )
         self.current_stack = current_stack or {}
         self.next_stack = next_stack or {}
@@ -167,17 +192,22 @@ class StackMergedEvent(BaseComposeEvent):
 
 class StackTransformedEvent(BaseComposeEvent):
     """Event triggered when stack transformation is complete."""
-    
-    def __init__(self, event_type: EventType, source_component: str,
-                 original_stack: Optional[Dict[str, Any]] = None,
-                 stack_payload: Optional[Dict[str, Any]] = None,
-                 expressions_resolved: Optional[Dict[str, str]] = None,
-                 transformation_type: str = "expression_resolution", **kwargs):
+
+    def __init__(
+        self,
+        event_type: EventType,
+        source_component: str,
+        original_stack: dict[str, Any] | None = None,
+        stack_payload: dict[str, Any] | None = None,
+        expressions_resolved: dict[str, str] | None = None,
+        transformation_type: str = "expression_resolution",
+        **kwargs,
+    ):
         super().__init__(
-            event_type=event_type, 
-            source_component=source_component, 
+            event_type=event_type,
+            source_component=source_component,
             stack_payload=stack_payload,
-            **kwargs
+            **kwargs,
         )
         self.original_stack = original_stack or {}
         # Keep transformed_stack for backwards compatibility, but map to stack_payload
@@ -188,19 +218,25 @@ class StackTransformedEvent(BaseComposeEvent):
 
 class OrchestrationStartedEvent(BaseComposeEvent):
     """Event triggered when orchestration process begins."""
-    
-    def __init__(self, event_type: EventType, source_component: str, action: str,
-                 execution_plan: Optional[Dict[str, Any]] = None,
-                 context_variables: Optional[Dict[str, Any]] = None,
-                 stack_payload: Optional[Dict[str, Any]] = None,
-                 orchestration_id: Optional[str] = None, **kwargs):
+
+    def __init__(
+        self,
+        event_type: EventType,
+        source_component: str,
+        action: str,
+        execution_plan: dict[str, Any] | None = None,
+        context_variables: dict[str, Any] | None = None,
+        stack_payload: dict[str, Any] | None = None,
+        orchestration_id: str | None = None,
+        **kwargs,
+    ):
         super().__init__(
-            event_type=event_type, 
-            source_component=source_component, 
+            event_type=event_type,
+            source_component=source_component,
             action=action,
             stack_payload=stack_payload,
             orchestration_id=orchestration_id or str(uuid.uuid4()),
-            **kwargs
+            **kwargs,
         )
         self.execution_plan = execution_plan or {}
         self.context_variables = context_variables or {}
@@ -209,15 +245,21 @@ class OrchestrationStartedEvent(BaseComposeEvent):
 class OrchestrationCompletedEvent(BaseComposeEvent):
     """Event triggered when orchestration completes successfully."""
 
-    def __init__(self, event_type: EventType, source_component: str, orchestration_id: str,
-                 final_stack_state: Optional[Dict[str, Any]] = None,
-                 execution_summary: Optional[Dict[str, Any]] = None,
-                 duration: float = 0.0, **kwargs):
+    def __init__(
+        self,
+        event_type: EventType,
+        source_component: str,
+        orchestration_id: str,
+        final_stack_state: dict[str, Any] | None = None,
+        execution_summary: dict[str, Any] | None = None,
+        duration: float = 0.0,
+        **kwargs,
+    ):
         super().__init__(
             event_type=event_type,
             source_component=source_component,
             orchestration_id=orchestration_id,
-            **kwargs
+            **kwargs,
         )
         self.final_stack_state = final_stack_state or {}
         self.execution_summary = execution_summary or {}
@@ -227,17 +269,23 @@ class OrchestrationCompletedEvent(BaseComposeEvent):
 class OrchestrationFailedEvent(BaseComposeEvent):
     """Event triggered when orchestration fails."""
 
-    def __init__(self, event_type: EventType, source_component: str, orchestration_id: str,
-                 error_details: Optional[str] = None,
-                 failed_step: Optional[str] = None,
-                 stack_payload: Optional[Dict[str, Any]] = None,
-                 can_rollback: bool = False, **kwargs):
+    def __init__(
+        self,
+        event_type: EventType,
+        source_component: str,
+        orchestration_id: str,
+        error_details: str | None = None,
+        failed_step: str | None = None,
+        stack_payload: dict[str, Any] | None = None,
+        can_rollback: bool = False,
+        **kwargs,
+    ):
         super().__init__(
             event_type=event_type,
             source_component=source_component,
             orchestration_id=orchestration_id,
             stack_payload=stack_payload,
-            **kwargs
+            **kwargs,
         )
         self.error_details = error_details or ""
         self.failed_step = failed_step or ""
@@ -247,16 +295,21 @@ class OrchestrationFailedEvent(BaseComposeEvent):
 class RollbackStartedEvent(BaseComposeEvent):
     """Event triggered when rollback to previous stack version begins."""
 
-    def __init__(self, event_type: EventType, source_component: str,
-                 orchestration_id: Optional[str] = None,
-                 previous_stack: Optional[Dict[str, Any]] = None,
-                 failed_stack: Optional[Dict[str, Any]] = None,
-                 failure_reason: str = "", **kwargs):
+    def __init__(
+        self,
+        event_type: EventType,
+        source_component: str,
+        orchestration_id: str | None = None,
+        previous_stack: dict[str, Any] | None = None,
+        failed_stack: dict[str, Any] | None = None,
+        failure_reason: str = "",
+        **kwargs,
+    ):
         super().__init__(
             event_type=event_type,
             source_component=source_component,
             orchestration_id=orchestration_id or str(uuid.uuid4()),
-            **kwargs
+            **kwargs,
         )
         self.previous_stack = previous_stack or {}
         self.failed_stack = failed_stack or {}
@@ -266,15 +319,20 @@ class RollbackStartedEvent(BaseComposeEvent):
 class RollbackCompletedEvent(BaseComposeEvent):
     """Event triggered when rollback completes successfully."""
 
-    def __init__(self, event_type: EventType, source_component: str,
-                 orchestration_id: str,
-                 restored_stack: Optional[Dict[str, Any]] = None,
-                 rollback_duration: float = 0.0, **kwargs):
+    def __init__(
+        self,
+        event_type: EventType,
+        source_component: str,
+        orchestration_id: str,
+        restored_stack: dict[str, Any] | None = None,
+        rollback_duration: float = 0.0,
+        **kwargs,
+    ):
         super().__init__(
             event_type=event_type,
             source_component=source_component,
             orchestration_id=orchestration_id,
-            **kwargs
+            **kwargs,
         )
         self.restored_stack = restored_stack or {}
         self.rollback_duration = rollback_duration
@@ -283,15 +341,20 @@ class RollbackCompletedEvent(BaseComposeEvent):
 class RollbackFailedEvent(BaseComposeEvent):
     """Event triggered when rollback fails."""
 
-    def __init__(self, event_type: EventType, source_component: str,
-                 orchestration_id: str,
-                 error_details: str = "",
-                 original_failure: str = "", **kwargs):
+    def __init__(
+        self,
+        event_type: EventType,
+        source_component: str,
+        orchestration_id: str,
+        error_details: str = "",
+        original_failure: str = "",
+        **kwargs,
+    ):
         super().__init__(
             event_type=event_type,
             source_component=source_component,
             orchestration_id=orchestration_id,
-            **kwargs
+            **kwargs,
         )
         self.error_details = error_details
         self.original_failure = original_failure
@@ -299,17 +362,23 @@ class RollbackFailedEvent(BaseComposeEvent):
 
 class PipelineRequestedEvent(BaseComposeEvent):
     """Event triggered when a pipeline execution is requested."""
-    
-    def __init__(self, event_type: EventType, source_component: str, pipeline_name: str,
-                 execution_context: Optional[Dict[str, Any]] = None,
-                 stack_payload: Optional[Dict[str, Any]] = None, **kwargs):
+
+    def __init__(
+        self,
+        event_type: EventType,
+        source_component: str,
+        pipeline_name: str,
+        execution_context: dict[str, Any] | None = None,
+        stack_payload: dict[str, Any] | None = None,
+        **kwargs,
+    ):
         super().__init__(
-            event_type=event_type, 
-            source_component=source_component, 
+            event_type=event_type,
+            source_component=source_component,
             pipeline_name=pipeline_name,
             execution_context=execution_context,
             stack_payload=stack_payload,
-            **kwargs
+            **kwargs,
         )
         # Keep stack_manifest for backwards compatibility, but map to stack_payload
         self.stack_manifest = self.stack_payload
@@ -317,14 +386,21 @@ class PipelineRequestedEvent(BaseComposeEvent):
 
 class PipelineStartedEvent(BaseComposeEvent):
     """Event triggered when a pipeline starts execution."""
-    
-    def __init__(self, event_type: EventType, source_component: str, pipeline_name: str, execution_id: str,
-                 steps_planned: Optional[List[str]] = None, **kwargs):
+
+    def __init__(
+        self,
+        event_type: EventType,
+        source_component: str,
+        pipeline_name: str,
+        execution_id: str,
+        steps_planned: list[str] | None = None,
+        **kwargs,
+    ):
         super().__init__(
-            event_type=event_type, 
-            source_component=source_component, 
+            event_type=event_type,
+            source_component=source_component,
             pipeline_name=pipeline_name,
-            **kwargs
+            **kwargs,
         )
         self.execution_id = execution_id
         self.steps_planned = steps_planned or []
@@ -332,16 +408,23 @@ class PipelineStartedEvent(BaseComposeEvent):
 
 class PipelineCompletedEvent(BaseComposeEvent):
     """Event triggered when a pipeline completes successfully."""
-    
-    def __init__(self, event_type: EventType, source_component: str, pipeline_name: str, execution_id: str,
-                 final_result: Optional[Dict[str, Any]] = None,
-                 steps_executed: Optional[List[str]] = None,
-                 total_duration: float = 0.0, **kwargs):
+
+    def __init__(
+        self,
+        event_type: EventType,
+        source_component: str,
+        pipeline_name: str,
+        execution_id: str,
+        final_result: dict[str, Any] | None = None,
+        steps_executed: list[str] | None = None,
+        total_duration: float = 0.0,
+        **kwargs,
+    ):
         super().__init__(
-            event_type=event_type, 
-            source_component=source_component, 
+            event_type=event_type,
+            source_component=source_component,
             pipeline_name=pipeline_name,
-            **kwargs
+            **kwargs,
         )
         self.execution_id = execution_id
         self.final_result = final_result or {}
@@ -351,15 +434,23 @@ class PipelineCompletedEvent(BaseComposeEvent):
 
 class PipelineFailedEvent(BaseComposeEvent):
     """Event triggered when a pipeline fails."""
-    
-    def __init__(self, event_type: EventType, source_component: str, pipeline_name: str, execution_id: str,
-                 failure_step: str, error_details: Optional[Dict[str, Any]] = None,
-                 compensation_executed: bool = False, **kwargs):
+
+    def __init__(
+        self,
+        event_type: EventType,
+        source_component: str,
+        pipeline_name: str,
+        execution_id: str,
+        failure_step: str,
+        error_details: dict[str, Any] | None = None,
+        compensation_executed: bool = False,
+        **kwargs,
+    ):
         super().__init__(
-            event_type=event_type, 
-            source_component=source_component, 
+            event_type=event_type,
+            source_component=source_component,
             pipeline_name=pipeline_name,
-            **kwargs
+            **kwargs,
         )
         self.execution_id = execution_id
         self.failure_step = failure_step
@@ -369,19 +460,26 @@ class PipelineFailedEvent(BaseComposeEvent):
 
 class StackProcessedEvent(BaseComposeEvent):
     """Event triggered when stack processing is complete."""
-    
-    def __init__(self, event_type: EventType = None, source_component: str = "stack_processor", 
-                 stack_name: str = "", action: str = "", stack_payload: Optional[Dict[str, Any]] = None,
-                 execution_requirements: Optional[Dict[str, Any]] = None,
-                 original_payload: Optional[Dict[str, Any]] = None,
-                 processing_applied: Optional[list] = None, **kwargs):
+
+    def __init__(
+        self,
+        event_type: EventType = None,
+        source_component: str = "stack_processor",
+        stack_name: str = "",
+        action: str = "",
+        stack_payload: dict[str, Any] | None = None,
+        execution_requirements: dict[str, Any] | None = None,
+        original_payload: dict[str, Any] | None = None,
+        processing_applied: list | None = None,
+        **kwargs,
+    ):
         super().__init__(
-            event_type=event_type or EventType.STACK_PROCESSED, 
-            source_component=source_component, 
+            event_type=event_type or EventType.STACK_PROCESSED,
+            source_component=source_component,
             stack_name=stack_name,
             action=action,
             stack_payload=stack_payload,
-            **kwargs
+            **kwargs,
         )
         # Keep merged_stack for backwards compatibility, but map to stack_payload
         self.merged_stack = self.stack_payload
@@ -393,13 +491,19 @@ class StackProcessedEvent(BaseComposeEvent):
 class TwinUpdateEvent(BaseComposeEvent):
     """Event triggered when a digital twin update is requested."""
 
-    def __init__(self, event_type: EventType = None, source_component: str = "twin_integration",
-                 twin_id: str = "", update_type: str = "",
-                 data: Optional[Dict[str, Any]] = None, **kwargs):
+    def __init__(
+        self,
+        event_type: EventType = None,
+        source_component: str = "twin_integration",
+        twin_id: str = "",
+        update_type: str = "",
+        data: dict[str, Any] | None = None,
+        **kwargs,
+    ):
         super().__init__(
             event_type=event_type or EventType.TWIN_UPDATE,
             source_component=source_component,
-            **kwargs
+            **kwargs,
         )
         self.twin_id = twin_id
         self.update_type = update_type
@@ -409,15 +513,22 @@ class TwinUpdateEvent(BaseComposeEvent):
 class ProcessCrashedEvent(BaseComposeEvent):
     """Event triggered when a launched process crashes unexpectedly."""
 
-    def __init__(self, event_type: EventType = None, source_component: str = "launch_plugin",
-                 process_name: str = "", exit_code: int = -1,
-                 stack_name: str = "", error_message: str = "",
-                 process_output: str = "", **kwargs):
+    def __init__(
+        self,
+        event_type: EventType = None,
+        source_component: str = "launch_plugin",
+        process_name: str = "",
+        exit_code: int = -1,
+        stack_name: str = "",
+        error_message: str = "",
+        process_output: str = "",
+        **kwargs,
+    ):
         super().__init__(
             event_type=event_type or EventType.PROCESS_CRASHED,
             source_component=source_component,
             stack_name=stack_name,
-            **kwargs
+            **kwargs,
         )
         self.process_name = process_name
         self.exit_code = exit_code
@@ -427,33 +538,33 @@ class ProcessCrashedEvent(BaseComposeEvent):
 
 class PipelineEvents:
     """Factory class for creating pipeline-related events."""
-    
+
     @staticmethod
-    def create_start_event(pipeline_name: str, context: Optional[Dict[str, Any]] = None):
+    def create_start_event(pipeline_name: str, context: dict[str, Any] | None = None):
         """Create a pipeline start event."""
         return PipelineStartedEvent(
             event_type=EventType.PIPELINE_START,
             source_component="pipeline_engine",
             pipeline_name=pipeline_name,
             execution_id=str(uuid.uuid4()),
-            metadata=context or {}
+            metadata=context or {},
         )
-    
+
     @staticmethod
-    def create_completion_event(pipeline_name: str, success: bool = True, 
-                              result: Optional[Dict[str, Any]] = None):
+    def create_completion_event(
+        pipeline_name: str, success: bool = True, result: dict[str, Any] | None = None
+    ):
         """Create a pipeline completion event."""
         return PipelineCompletedEvent(
             event_type=EventType.PIPELINE_COMPLETE,
             source_component="pipeline_engine",
             pipeline_name=pipeline_name,
             execution_id=str(uuid.uuid4()),
-            final_result=result or {"success": success}
+            final_result=result or {"success": success},
         )
-    
+
     @staticmethod
-    def create_error_event(pipeline_name: str, error: str, 
-                          context: Optional[Dict[str, Any]] = None):
+    def create_error_event(pipeline_name: str, error: str, context: dict[str, Any] | None = None):
         """Create a pipeline error event."""
         return PipelineFailedEvent(
             event_type=EventType.PIPELINE_ERROR,
@@ -461,76 +572,76 @@ class PipelineEvents:
             pipeline_name=pipeline_name,
             execution_id=str(uuid.uuid4()),
             failure_step="unknown",
-            error_details={"error": error, "context": context or {}}
+            error_details={"error": error, "context": context or {}},
         )
 
 
 class EventBus:
     """Central event bus for composer event handling."""
-    
+
     def __init__(self, max_workers: int = 4):
-        self._handlers: Dict[EventType, List[Callable]] = {}
-        self._middleware: List[Callable] = []
+        self._handlers: dict[EventType, list[Callable]] = {}
+        self._middleware: list[Callable] = []
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._logger = None
-    
+
     def set_logger(self, logger):
         """Set logger for event bus operations."""
         self._logger = logger
-    
+
     def subscribe(self, event_type: EventType, handler: Callable):
         """Subscribe a handler to an event type."""
         if event_type not in self._handlers:
             self._handlers[event_type] = []
         self._handlers[event_type].append(handler)
-        
+
         if self._logger:
             self._logger.debug(f"Subscribed {handler.__name__} to {event_type.value}")
-    
+
     def unsubscribe(self, event_type: EventType, handler: Callable):
         """Unsubscribe a handler from an event type."""
         if event_type in self._handlers:
             self._handlers[event_type].remove(handler)
-            
+
             if self._logger:
                 self._logger.debug(f"Unsubscribed {handler.__name__} from {event_type.value}")
-    
+
     def add_middleware(self, middleware: Callable):
         """Add middleware for event processing."""
         self._middleware.append(middleware)
-    
+
     async def publish(self, event: BaseComposeEvent):
         """Publish an event to all subscribers asynchronously."""
         try:
             # Apply middleware
             for middleware in self._middleware:
                 event = await middleware(event)
-            
+
             # Get handlers for this event type
             handlers = self._handlers.get(event.event_type, [])
-            
+
             # Execute handlers concurrently
             if handlers:
                 tasks = [
-                    asyncio.get_event_loop().run_in_executor(
-                        self._executor, handler, event
-                    )
+                    asyncio.get_event_loop().run_in_executor(self._executor, handler, event)
                     for handler in handlers
                 ]
                 await asyncio.gather(*tasks, return_exceptions=True)
-                
+
         except Exception as e:
             if self._logger:
                 self._logger.error(f"Error publishing event {event.event_type.value}: {e}")
-    
+
     def publish_sync(self, event: BaseComposeEvent):
         """Synchronous event publishing for ROS callbacks."""
         try:
             handlers = self._handlers.get(event.event_type, [])
-            
+
             if self._logger:
-                self._logger.debug(f"Publishing {event.event_type.value} to {len(handlers)} handlers")
-                
+                self._logger.debug(
+                    f"Publishing {event.event_type.value} to {len(handlers)} handlers"
+                )
+
             for handler in handlers:
                 try:
                     handler(event)
@@ -538,7 +649,7 @@ class EventBus:
                     if self._logger:
                         self._logger.error(f"Error in event handler {handler.__name__}: {e}")
                     # Continue with other handlers
-                    
+
         except Exception as e:
             if self._logger:
                 self._logger.error(f"Error in synchronous event publishing: {e}")

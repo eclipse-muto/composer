@@ -1,9 +1,9 @@
-import warnings
 import multiprocessing
+import warnings
 
 # Use 'spawn' start method to avoid fork() warnings in multi-threaded tests
 try:
-    multiprocessing.set_start_method('spawn')
+    multiprocessing.set_start_method("spawn")
 except RuntimeError:
     # start method may already be set by another test
     pass

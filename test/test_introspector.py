@@ -11,9 +11,10 @@
 #   Composiv.ai - initial API and implementation
 #
 
-import unittest
-from unittest.mock import patch, call
 import subprocess
+import unittest
+from unittest.mock import call, patch
+
 from muto_composer.introspection.introspector import Introspector
 
 

@@ -18,11 +18,10 @@ and assert that the resulting StackManifest objects match the expected talker/li
 """
 
 import json
-import os
 import unittest
 from pathlib import Path
 
-from muto_composer.utils.stack_parser import StackParser, create_stack_parser
+from muto_composer.utils.stack_parser import create_stack_parser
 
 
 class TestTalkerListenerSamples(unittest.TestCase):
@@ -39,7 +38,7 @@ class TestTalkerListenerSamples(unittest.TestCase):
         """Load a sample JSON file."""
         sample_path = self.samples_dir / filename
         self.assertTrue(sample_path.exists(), f"Sample file {filename} not found at {sample_path}")
-        with open(sample_path, 'r') as f:
+        with open(sample_path) as f:
             return json.load(f)
 
     def test_talker_listener_json_format(self):
@@ -83,8 +82,7 @@ class TestTalkerListenerSamples(unittest.TestCase):
         parsed = self.parser.parse_payload(payload)
 
         self.assertTrue(
-            self.parser.validate_stack(parsed),
-            "Talker-listener JSON stack should pass validation"
+            self.parser.validate_stack(parsed), "Talker-listener JSON stack should pass validation"
         )
 
     def test_talker_listener_archive_format(self):
@@ -124,7 +122,7 @@ class TestTalkerListenerSamples(unittest.TestCase):
 
         self.assertTrue(
             self.parser.validate_stack(parsed),
-            "Talker-listener archive stack should pass validation"
+            "Talker-listener archive stack should pass validation",
         )
 
     def test_talker_listener_json_instance_format(self):
@@ -167,13 +165,12 @@ class TestTalkerListenerSamples(unittest.TestCase):
         self.assertGreater(len(sample_files), 0, "Should have sample files")
 
         for sample_file in sample_files:
-            with self.subTest(file=sample_file.name):
-                with open(sample_file, 'r') as f:
-                    try:
-                        data = json.load(f)
-                        self.assertIsInstance(data, dict)
-                    except json.JSONDecodeError as e:
-                        self.fail(f"Invalid JSON in {sample_file.name}: {e}")
+            with self.subTest(file=sample_file.name), open(sample_file) as f:
+                try:
+                    data = json.load(f)
+                    self.assertIsInstance(data, dict)
+                except json.JSONDecodeError as e:
+                    self.fail(f"Invalid JSON in {sample_file.name}: {e}")
 
     def test_topology_nodes_are_consistent(self):
         """
@@ -224,9 +221,7 @@ class TestStackParserIntegration(unittest.TestCase):
 
     def test_validate_stack_returns_true_for_valid_stack(self):
         """Test validation returns true for valid stack with nodes."""
-        stack = {
-            "node": [{"name": "test", "pkg": "test_pkg", "exec": "test_exec"}]
-        }
+        stack = {"node": [{"name": "test", "pkg": "test_pkg", "exec": "test_exec"}]}
         self.assertTrue(self.parser.validate_stack(stack))
 
 

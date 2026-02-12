@@ -12,12 +12,14 @@
 #
 
 import json
-from .base_plugin import BasePlugin, StackOperation
 
 import rclpy
-from std_msgs.msg import String
 from muto_msgs.msg import StackManifest
 from muto_msgs.srv import ComposePlugin
+from std_msgs.msg import String
+
+from .base_plugin import BasePlugin, StackOperation
+
 
 class MutoDefaultComposePlugin(BasePlugin):
     def __init__(self):
@@ -27,13 +29,8 @@ class MutoDefaultComposePlugin(BasePlugin):
         self.next_stack = None  # To store the next stack if needed
 
         self.create_subscription(String, "raw_stack", self.handle_raw_stack, 10)
-        self.composed_stack_publisher = self.create_publisher(
-            StackManifest, "composed_stack", 10
-        )
-        self.compose_srv = self.create_service(
-            ComposePlugin, "muto_compose", self.handle_compose
-        )
-
+        self.composed_stack_publisher = self.create_publisher(StackManifest, "composed_stack", 10)
+        self.compose_srv = self.create_service(ComposePlugin, "muto_compose", self.handle_compose)
 
     def handle_raw_stack(self, stack_msg: String):
         """
@@ -46,10 +43,7 @@ class MutoDefaultComposePlugin(BasePlugin):
         except json.JSONDecodeError as e:
             self.get_logger().error(f"Failed to parse raw stack JSON: {e}")
 
-
-    def handle_compose(
-        self, request: ComposePlugin.Request, response: ComposePlugin.Response
-    ):
+    def handle_compose(self, request: ComposePlugin.Request, response: ComposePlugin.Response):
         """
         Service handler for composing the stack.
         Publishes the composed stack if 'start' is True.
@@ -63,7 +57,8 @@ class MutoDefaultComposePlugin(BasePlugin):
                     stack_data = json.loads(request.input.current.stack)
                     # Kill actions have stackId in value key or at top level, not a full manifest
                     if stack_data.get("value", {}).get("stackId") or (
-                        stack_data.get("path", "").endswith("/kill") and not stack_data.get("launch")
+                        stack_data.get("path", "").endswith("/kill")
+                        and not stack_data.get("launch")
                     ):
                         is_kill_action = True
                 except json.JSONDecodeError:
@@ -93,8 +88,6 @@ class MutoDefaultComposePlugin(BasePlugin):
 
         response.output.current = request.input.current
         return response
-
-
 
     def publish_composed_stack(self):
         """

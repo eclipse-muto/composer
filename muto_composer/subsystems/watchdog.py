@@ -18,20 +18,20 @@ Periodically pings Composer services and reports which are up/down.
 
 import json
 import time
-from typing import Dict, Any, Optional, List
-from enum import IntEnum
 from dataclasses import dataclass, field
-from datetime import datetime
+from enum import IntEnum
+from typing import Any
 
 import rclpy
-from rclpy.node import Node
 from rclpy.callback_groups import ReentrantCallbackGroup
-from std_srvs.srv import Trigger
+from rclpy.node import Node
 from std_msgs.msg import String
+from std_srvs.srv import Trigger
 
 
 class HealthStatus(IntEnum):
     """Health status levels for subsystems."""
+
     HEALTHY = 0
     DEGRADED = 1
     FAILED = 2
@@ -41,13 +41,14 @@ class HealthStatus(IntEnum):
 @dataclass
 class SubsystemHealth:
     """Health status for a single subsystem."""
+
     name: str
     status: HealthStatus = HealthStatus.UNKNOWN
     message: str = ""
-    last_check: Optional[float] = None
-    response_time_ms: Optional[float] = None
+    last_check: float | None = None
+    response_time_ms: float | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "status": self.status.name,
@@ -60,12 +61,13 @@ class SubsystemHealth:
 @dataclass
 class SystemHealthReport:
     """Overall system health report."""
+
     overall_status: HealthStatus = HealthStatus.UNKNOWN
-    subsystems: Dict[str, SubsystemHealth] = field(default_factory=dict)
+    subsystems: dict[str, SubsystemHealth] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
     uptime_seconds: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "overall_status": self.overall_status.name,
             "subsystems": {name: sub.to_dict() for name, sub in self.subsystems.items()},
@@ -110,34 +112,30 @@ class ComposerWatchdog(Node):
         self._callback_group = ReentrantCallbackGroup()
 
         # Initialize health tracking
-        self._subsystem_health: Dict[str, SubsystemHealth] = {}
+        self._subsystem_health: dict[str, SubsystemHealth] = {}
         for name, _ in self.SERVICES_TO_MONITOR:
             self._subsystem_health[name] = SubsystemHealth(name=name)
 
         # Create health status publisher
-        self._health_pub = self.create_publisher(
-            String,
-            "composer_watchdog/health_status",
-            10
-        )
+        self._health_pub = self.create_publisher(String, "composer_watchdog/health_status", 10)
 
         # Create health check service
         self._health_service = self.create_service(
             Trigger,
             "composer_watchdog/check_health",
             self._handle_health_check,
-            callback_group=self._callback_group
+            callback_group=self._callback_group,
         )
 
         # Create service clients for each monitored service
-        self._service_clients: Dict[str, Any] = {}
+        self._service_clients: dict[str, Any] = {}
         self._init_service_clients()
 
         # Create periodic health check timer
         self._check_timer = self.create_timer(
             self.check_interval_sec,
             self._periodic_health_check,
-            callback_group=self._callback_group
+            callback_group=self._callback_group,
         )
 
         self.get_logger().info(
@@ -164,8 +162,7 @@ class ComposerWatchdog(Node):
     def _perform_health_check(self) -> SystemHealthReport:
         """Perform health check on all monitored subsystems."""
         report = SystemHealthReport(
-            timestamp=time.time(),
-            uptime_seconds=time.time() - self.start_time
+            timestamp=time.time(), uptime_seconds=time.time() - self.start_time
         )
 
         healthy_count = 0
@@ -225,8 +222,7 @@ class ComposerWatchdog(Node):
 
             # Log summary
             status_summary = ", ".join(
-                f"{name}={sub.status.name}"
-                for name, sub in report.subsystems.items()
+                f"{name}={sub.status.name}" for name, sub in report.subsystems.items()
             )
             self.get_logger().info(
                 f"Health check complete: {report.overall_status.name} [{status_summary}]"
@@ -236,9 +232,7 @@ class ComposerWatchdog(Node):
             self.get_logger().error(f"Error during health check: {e}")
 
     def _handle_health_check(
-        self,
-        request: Trigger.Request,
-        response: Trigger.Response
+        self, request: Trigger.Request, response: Trigger.Response
     ) -> Trigger.Response:
         """Handle on-demand health check service requests."""
         try:
@@ -257,7 +251,7 @@ class ComposerWatchdog(Node):
         """Get current health report (for programmatic access)."""
         return self._perform_health_check()
 
-    def get_subsystem_health(self, name: str) -> Optional[SubsystemHealth]:
+    def get_subsystem_health(self, name: str) -> SubsystemHealth | None:
         """Get health status for a specific subsystem."""
         return self._subsystem_health.get(name)
 

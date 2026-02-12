@@ -12,7 +12,8 @@
 #
 
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import rclpy
 from rclpy.node import Node
 
@@ -179,9 +180,7 @@ class TestPipeline(unittest.TestCase):
             elif service_name == "muto_kill_stack":
                 future_mock.result.return_value = MagicMock(success=True, err_msg="")
             else:
-                future_mock.result.return_value = MagicMock(
-                    success=True, err_msg="Unreached"
-                )
+                future_mock.result.return_value = MagicMock(success=True, err_msg="Unreached")
 
             client_mock.call_async.return_value = future_mock
             return client_mock

@@ -13,6 +13,9 @@
 
 import unittest
 
+from launch import LaunchContext
+from launch.actions import DeclareLaunchArgument, GroupAction
+from launch.substitutions import LaunchConfiguration, TextSubstitution
 from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
 
@@ -20,9 +23,6 @@ from muto_composer.introspection.traverser import (
     recursively_extract_entities,
     resolve_substitutions,
 )
-from launch import LaunchContext
-from launch.actions import DeclareLaunchArgument, GroupAction
-from launch.substitutions import LaunchConfiguration, TextSubstitution
 
 
 class TestResolveSubstitutions(unittest.TestCase):
@@ -67,9 +67,7 @@ class TestRecursiveExtractEntities(unittest.TestCase):
         self.assertIsInstance(self.nodes[0], Node)
 
     def test_composable_node_extraction(self):
-        cnode = ComposableNode(
-            package="test_pkg", plugin="test_plugin", name="test_node"
-        )
+        cnode = ComposableNode(package="test_pkg", plugin="test_plugin", name="test_node")
         recursively_extract_entities(
             [cnode], self.context, self.nodes, self.composable_nodes, self.containers
         )

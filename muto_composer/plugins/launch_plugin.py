@@ -11,20 +11,22 @@
 #   Composiv.ai - initial API and implementation
 #
 
-import os
-import json
-import subprocess
 import asyncio
 import atexit
-from typing import Dict, Union, Optional
+import json
+import os
+import subprocess
+
 import rclpy
+from muto_msgs.msg import StackManifest
+from muto_msgs.srv import CoreTwin, LaunchPlugin
 from rclpy.callback_groups import ReentrantCallbackGroup
 from std_msgs.msg import String
-from muto_msgs.msg import StackManifest
-from muto_msgs.srv import LaunchPlugin, CoreTwin
-from muto_composer.workflow.launcher import Ros2LaunchParent
+
 from muto_composer.utils.paths import WORKSPACES_PATH
 from muto_composer.utils.stack_parser import StackParser
+from muto_composer.workflow.launcher import Ros2LaunchParent
+
 from .base_plugin import BasePlugin, StackContext, StackOperation
 
 
@@ -58,15 +60,9 @@ class MutoDefaultLaunchPlugin(BasePlugin):
     def __init__(self):
         super().__init__("launch_plugin")
 
-        self.start_srv = self.create_service(
-            LaunchPlugin, "muto_start_stack", self.handle_start
-        )
-        self.stop_srv = self.create_service(
-            LaunchPlugin, "muto_kill_stack", self.handle_kill
-        )
-        self.apply_srv = self.create_service(
-            LaunchPlugin, "muto_apply_stack", self.handle_apply
-        )
+        self.start_srv = self.create_service(LaunchPlugin, "muto_start_stack", self.handle_start)
+        self.stop_srv = self.create_service(LaunchPlugin, "muto_kill_stack", self.handle_kill)
+        self.apply_srv = self.create_service(LaunchPlugin, "muto_apply_stack", self.handle_apply)
 
         self.set_stack_cli = self.create_client(CoreTwin, "core_twin/set_current_stack")
 
@@ -74,17 +70,13 @@ class MutoDefaultLaunchPlugin(BasePlugin):
 
         # Track managed launchers by launch file for consistent lifecycle management
         # Supports both Ros2LaunchParent (for .launch.py) and ShellProcessWrapper (for .sh)
-        self._managed_launchers: Dict[str, Union[Ros2LaunchParent, ShellProcessWrapper]] = dict()
+        self._managed_launchers: dict[str, Ros2LaunchParent | ShellProcessWrapper] = dict()
 
         # Track stack name associated with each launcher for crash reporting
-        self._launcher_stack_names: Dict[str, str] = {}
+        self._launcher_stack_names: dict[str, str] = {}
 
         # Publisher for process crash notifications
-        self._crash_publisher = self.create_publisher(
-            String,
-            "launch_plugin/process_crashed",
-            10
-        )
+        self._crash_publisher = self.create_publisher(String, "launch_plugin/process_crashed", 10)
 
         # Ensure a valid asyncio loop exists to avoid 'There is no current event loop' warnings
         try:
@@ -100,11 +92,10 @@ class MutoDefaultLaunchPlugin(BasePlugin):
         self._process_monitor_timer = self.create_timer(
             self.PROCESS_MONITOR_INTERVAL,
             self._monitor_processes,
-            callback_group=ReentrantCallbackGroup()
+            callback_group=ReentrantCallbackGroup(),
         )
 
         atexit.register(self._cleanup_managed_launchers)
-
 
     def destroy_node(self) -> bool:
         """Ensure launched processes are cleaned up when the node is destroyed."""
@@ -117,7 +108,6 @@ class MutoDefaultLaunchPlugin(BasePlugin):
         """Periodically step through the asyncio event loop."""
         self.async_loop.stop()
         self.async_loop.run_forever()
-    
 
     def source_workspaces(self, current: StackManifest):
         """
@@ -140,9 +130,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
 
         # Get stack name - check metadata.name first, then name, then default
         stack_name = self._get_stack_name(current)
-        workspace_dir = os.path.join(
-            WORKSPACES_PATH, stack_name.replace(" ", "_")
-        )
+        workspace_dir = os.path.join(WORKSPACES_PATH, stack_name.replace(" ", "_"))
 
         def source_script(name: str, script_path: str) -> None:
             self.get_logger().info(f"Sourcing: {name} | {script_path}")
@@ -159,16 +147,12 @@ class MutoDefaultLaunchPlugin(BasePlugin):
                 )
                 env_output = result.stdout
                 env_vars = dict(
-                    line.split("=", 1)
-                    for line in env_output.splitlines()
-                    if "=" in line
+                    line.split("=", 1) for line in env_output.splitlines() if "=" in line
                 )
                 os.environ.update(env_vars)
                 self.get_logger().info(f"Sourced workspace: {name}")
             except subprocess.CalledProcessError as e:
-                self.get_logger().error(
-                    f"Failed to source workspace '{name}': {e.stderr}"
-                )
+                self.get_logger().error(f"Failed to source workspace '{name}': {e.stderr}")
             except Exception as e:
                 self.get_logger().error(f"Error sourcing workspace '{name}': {e}")
 
@@ -187,9 +171,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
                     "No explicit source scripts provided and install/setup.bash not found; skipping sourcing."
                 )
 
-    def handle_start(
-        self, request: LaunchPlugin.Request, response: LaunchPlugin.Response
-    ):
+    def handle_start(self, request: LaunchPlugin.Request, response: LaunchPlugin.Response):
         """
         Service handler for starting the stack using double dispatch pattern.
 
@@ -230,17 +212,13 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             os.chmod(script_path, 0o755)
 
         try:
-            result = subprocess.run(
-                [script_path], check=True, capture_output=True, text=True
-            )
+            result = subprocess.run([script_path], check=True, capture_output=True, text=True)
             self.get_logger().info(f"Script output: {result.stdout}")
         except subprocess.CalledProcessError as e:
             self.get_logger().error(f"Script failed with error: {e.stderr}")
             raise
 
-    def handle_kill(
-        self, request: LaunchPlugin.Request, response: LaunchPlugin.Response
-    ):
+    def handle_kill(self, request: LaunchPlugin.Request, response: LaunchPlugin.Response):
         """
         Service handler for killing the stack using double dispatch pattern.
 
@@ -263,7 +241,9 @@ class MutoDefaultLaunchPlugin(BasePlugin):
                 try:
                     stack_data = json.loads(request.input.current.stack)
                     # Kill payloads have stackId in value key or path ending in /kill
-                    stack_id = stack_data.get("value", {}).get("stackId") or stack_data.get("stackId")
+                    stack_id = stack_data.get("value", {}).get("stackId") or stack_data.get(
+                        "stackId"
+                    )
                     if stack_id or stack_data.get("path", "").endswith("/kill"):
                         is_kill_only_payload = True
                 except json.JSONDecodeError:
@@ -295,7 +275,9 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             else:
                 response.success = False
                 response.err_msg = "No current stack available or start flag not set."
-                self.get_logger().warning("No current stack available or start flag not set in kill request.")
+                self.get_logger().warning(
+                    "No current stack available or start flag not set in kill request."
+                )
         except Exception as e:
             self.get_logger().error(f"Exception occurred during kill: {e}")
             response.err_msg = str(e)
@@ -304,9 +286,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
         response.output.current = request.input.current
         return response
 
-    def handle_apply(
-        self, request: LaunchPlugin.Request, response: LaunchPlugin.Response
-    ):
+    def handle_apply(self, request: LaunchPlugin.Request, response: LaunchPlugin.Response):
         """
         Service handler for applying the stack configuration using double dispatch pattern.
 
@@ -329,15 +309,16 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             else:
                 response.success = False
                 response.err_msg = "No current stack available or start flag not set."
-                self.get_logger().warning("No current stack available or start flag not set in kill request.")
+                self.get_logger().warning(
+                    "No current stack available or start flag not set in kill request."
+                )
         except Exception as e:
             self.get_logger().error(f"Exception occurred during kill: {e}")
             response.err_msg = str(e)
             response.success = False
-            
+
         response.output.current = request.input.current
         return response
-    
 
     def _launch_via_ros2(self, context: StackContext, launch_file: str) -> bool:
         """
@@ -356,7 +337,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             return False
 
         # Determine launch method based on file extension
-        if full_launch_file.endswith('.sh'):
+        if full_launch_file.endswith(".sh"):
             return self._launch_via_shell(context, full_launch_file, launch_file)
         else:
             return self._launch_via_ros2_launch(context, full_launch_file, launch_file)
@@ -397,7 +378,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
                 cwd=workspace_dir,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                preexec_fn=os.setsid  # Create new process group for cleanup
+                preexec_fn=os.setsid,  # Create new process group for cleanup
             )
 
             # Store process for lifecycle management (using a wrapper object)
@@ -405,7 +386,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             self._managed_launchers[launch_file] = wrapper
 
             # Track stack name for crash reporting
-            stack_name = getattr(context, 'stack_name', None) or os.path.basename(workspace_dir)
+            stack_name = getattr(context, "stack_name", None) or os.path.basename(workspace_dir)
             self._launcher_stack_names[launch_file] = stack_name
 
             self.get_logger().info(
@@ -418,7 +399,9 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             self.get_logger().error(f"Failed to start shell script: {exc}")
             raise RuntimeError(f"Failed to start shell script: {exc}")
 
-    def _launch_via_ros2_launch(self, context: StackContext, full_path: str, launch_file: str) -> bool:
+    def _launch_via_ros2_launch(
+        self, context: StackContext, full_path: str, launch_file: str
+    ) -> bool:
         """
         Launch a ROS 2 launch file using Ros2LaunchParent.
 
@@ -442,9 +425,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             # Use the async method to launch the file
             async def _do_launch():
                 await launcher.launch_a_launch_file(
-                    launch_file_path=full_path,
-                    launch_file_arguments=[],
-                    noninteractive=True
+                    launch_file_path=full_path, launch_file_arguments=[], noninteractive=True
                 )
 
             # Schedule the launch on the async loop
@@ -472,9 +453,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
                 text=True,
             )
             env_vars = dict(
-                line.split("=", 1)
-                for line in result.stdout.splitlines()
-                if "=" in line
+                line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
             )
             os.environ.update(env_vars)
             self.get_logger().debug(f"Sourced workspace: {setup_bash}")
@@ -560,7 +539,9 @@ class MutoDefaultLaunchPlugin(BasePlugin):
                     stdout_output = ""
                     try:
                         if launcher.process.stdout:
-                            stdout_output = launcher.process.stdout.read().decode('utf-8', errors='replace')
+                            stdout_output = launcher.process.stdout.read().decode(
+                                "utf-8", errors="replace"
+                            )
                     except Exception:
                         pass
 
@@ -574,7 +555,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
                         exit_code=exit_code,
                         stack_name=stack_name,
                         error_message=f"Process exited with code {exit_code}",
-                        process_output=stdout_output[-500:] if stdout_output else ""
+                        process_output=stdout_output[-500:] if stdout_output else "",
                     )
 
                     # Remove from managed launchers
@@ -587,7 +568,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
         exit_code: int,
         stack_name: str,
         error_message: str,
-        process_output: str = ""
+        process_output: str = "",
     ) -> None:
         """Publish a process crash notification to the crash topic."""
         crash_data = {
@@ -595,7 +576,7 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             "exit_code": exit_code,
             "stack_name": stack_name,
             "error_message": error_message,
-            "process_output": process_output
+            "process_output": process_output,
         }
 
         msg = String()
