@@ -1,6 +1,8 @@
-# Composer
+# Muto Composer
 
-**Composer** is a ROS 2 package designed to organize and automate the software deployment process to a fleet of vehicles. It streamlines the workflow by managing stack definitions, resolving dependencies, handling buildjobs and orchestrating the execution of various pipelines.
+[![CI](https://github.com/eclipse-muto/composer/actions/workflows/colcon-build.yml/badge.svg)](https://github.com/eclipse-muto/composer/actions/workflows/colcon-build.yml)
+
+**Muto Composer** is a ROS 2 package designed to organize and automate the software deployment process to a fleet of vehicles. It streamlines the workflow by managing stack definitions, resolving dependencies, handling buildjobs and orchestrating the execution of various pipelines.
 
 ## Table of Contents
 
