@@ -18,6 +18,6 @@ Provides persistent state storage for stack deployments,
 enabling rollback to previous versions on failure.
 """
 
-from composer.state.persistence import StatePersistence, StackState
+from muto_composer.state.persistence import StatePersistence, StackState
 
 __all__ = ["StatePersistence", "StackState"]

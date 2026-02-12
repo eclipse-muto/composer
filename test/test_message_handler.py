@@ -15,9 +15,9 @@ import unittest
 from unittest.mock import MagicMock, patch
 import rclpy
 from muto_msgs.msg import MutoAction
-from composer.events import EventBus, EventType, StackRequestEvent
-from composer.subsystems.message_handler import MessageHandler, MessageRouter
-from composer.subsystems.stack_manager import StackType
+from muto_composer.events import EventBus, EventType, StackRequestEvent
+from muto_composer.subsystems.message_handler import MessageHandler, MessageRouter
+from muto_composer.subsystems.stack_manager import StackType
 
 
 class TestMessageRouter(unittest.TestCase):

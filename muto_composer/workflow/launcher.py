@@ -30,7 +30,7 @@ import asyncio
 from launch.actions import RegisterEventHandler
 from launch.event_handlers import OnProcessStart, OnProcessExit
 from launch_ros.actions import Node
-from composer.introspection.model.difference import Difference
+from muto_composer.introspection.model.difference import Difference
 
 
 class Ros2LaunchParent:

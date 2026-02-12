@@ -16,11 +16,11 @@ import os
 import subprocess
 import unittest
 from unittest.mock import MagicMock, patch
-from composer.stack_handlers import StackTypeRegistry
+from muto_composer.stack_handlers import StackTypeRegistry
 
 import rclpy
 
-from composer.plugins.launch_plugin import MutoDefaultLaunchPlugin
+from muto_composer.plugins.launch_plugin import MutoDefaultLaunchPlugin
 from muto_msgs.srv import LaunchPlugin
 
 
@@ -42,8 +42,8 @@ class TestLaunchPlugin(unittest.TestCase):
         self.node.stack_registry.get_handler = MagicMock(return_value=self.default_mock_handler)
         
         # Set up global Stack mocking for handlers
-        self.stack_patcher_json = patch('composer.stack_handlers.json_handler.Stack')
-        self.stack_patcher_ditto = patch('composer.stack_handlers.ditto_handler.Stack')
+        self.stack_patcher_json = patch('muto_composer.stack_handlers.json_handler.Stack')
+        self.stack_patcher_ditto = patch('muto_composer.stack_handlers.ditto_handler.Stack')
         self.mock_stack_json = self.stack_patcher_json.start()
         self.mock_stack_ditto = self.stack_patcher_ditto.start()
         
@@ -85,9 +85,9 @@ class TestLaunchPlugin(unittest.TestCase):
     def tearDownClass(cls) -> None:
         rclpy.shutdown()
 
-    @patch("composer.plugins.launch_plugin.MutoDefaultLaunchPlugin.source_workspaces")
+    @patch("muto_composer.plugins.launch_plugin.MutoDefaultLaunchPlugin.source_workspaces")
     @patch("os.chdir")
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_start_exception(self, mock_launch_plugin, mock_os, mock_ws):
         # Create proper mock request and response objects
         request = MagicMock()
@@ -158,7 +158,7 @@ class TestLaunchPlugin(unittest.TestCase):
         mock_subprocess_run.assert_not_called()
         mock_environ_update.assert_not_called()
 
-    @patch("composer.utils.paths.get_workspaces_path", return_value="/tmp/muto/muto_workspaces")
+    @patch("muto_composer.utils.paths.get_workspaces_path", return_value="/tmp/muto/muto_workspaces")
     @patch("subprocess.run")
     @patch("os.environ.update")
     def test_source_workspace(self, mock_environ_update, mock_subprocess_run, mock_get_path):
@@ -166,7 +166,7 @@ class TestLaunchPlugin(unittest.TestCase):
         mock_current.source = json.dumps({"workspace_name": "/mock/file"})
         # Mock the _get_stack_name method
         with patch.object(self.node, '_get_stack_name', return_value="Test Stack"):
-            with patch("composer.plugins.launch_plugin.WORKSPACES_PATH", "/tmp/muto/muto_workspaces"):
+            with patch("muto_composer.plugins.launch_plugin.WORKSPACES_PATH", "/tmp/muto/muto_workspaces"):
                 self.node.source_workspaces(mock_current)
 
         self.node.get_logger().info.assert_called_with(
@@ -211,7 +211,7 @@ class TestLaunchPlugin(unittest.TestCase):
 
         mock_environ_update.assert_not_called()
 
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_start_start_none(self, mock_launch_plugin):
         response = MagicMock()
         response.success = False
@@ -233,12 +233,12 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertFalse(response.success)
         self.assertEqual(response.err_msg, "No current stack available or start flag not set.")
 
-    @patch("composer.plugins.launch_plugin.subprocess.Popen")
+    @patch("muto_composer.plugins.launch_plugin.subprocess.Popen")
     @patch("os.chmod")
     @patch("builtins.open", create=True)
     @patch.object(MutoDefaultLaunchPlugin, "find_file")
     @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_start(
         self,
         mock_launch_plugin,
@@ -283,7 +283,7 @@ class TestLaunchPlugin(unittest.TestCase):
     @patch.object(MutoDefaultLaunchPlugin, "run_script")
     @patch.object(MutoDefaultLaunchPlugin, "find_file")
     @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_start_none(
         self, mock_launch_plugin, mock_source_workspace, mock_find_file, mock_run_script
     ):
@@ -365,8 +365,8 @@ class TestLaunchPlugin(unittest.TestCase):
             ["/mock/script/path"], check=True, capture_output=True, text=True
         )
 
-    @patch("composer.plugins.launch_plugin.CoreTwin")
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.CoreTwin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_kill_start_none(self, mock_launch_plugin, mock_core_twin):
         request = MagicMock()
         request.start = None
@@ -384,7 +384,7 @@ class TestLaunchPlugin(unittest.TestCase):
         mock_core_twin.assert_not_called()
 
     @patch.object(MutoDefaultLaunchPlugin, "_terminate_launch_process")
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_kill(self, mock_launch_plugin, mock_terminate):
         self.node.set_stack_cli = MagicMock()
 
@@ -416,9 +416,9 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
-    @patch('composer.stack_handlers.json_handler.Stack')
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.json_handler.Stack')
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_apply_raw_stack(self, mock_launch_plugin, mock_stack_json, mock_stack_ditto):
         """Test handle_apply with raw stack payload."""
         # Use real handlers for this test
@@ -449,7 +449,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_apply_json_stack(self, mock_launch_plugin):
         """Test handle_apply with stack/json payload."""
         # Use real handlers for this test
@@ -476,7 +476,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_apply_archive_stack(self, mock_launch_plugin):
         """Test handle_apply with stack/archive payload."""
         request = MagicMock()
@@ -500,7 +500,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_apply_no_stack_data(self, mock_launch_plugin):
         """Test handle_apply with no valid stack data."""
         request = MagicMock()
@@ -523,7 +523,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertFalse(response.success)
         self.assertEqual(response.err_msg, "No current stack available or start flag not set.")
 
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_apply_no_current_stack(self, mock_launch_plugin):
         """Test handle_apply with no current stack."""
         request = MagicMock()
@@ -541,7 +541,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertEqual(response.err_msg, "No current stack available or start flag not set.")
 
     @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_start_json_payload(self, mock_launch_plugin, mock_source_workspace):
         """Test handle_start with stack/json payload."""
         # Use real handlers for this test
@@ -569,7 +569,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertEqual(response.err_msg, "")
 
     @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_start_raw_payload(self, mock_launch_plugin, mock_source_workspace):
         """Test handle_start with raw stack payload."""
         # Use real handlers for this test
@@ -596,7 +596,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_kill_raw_payload(self, mock_launch_plugin):
         """Test handle_kill with raw stack payload."""
         # Use real handlers for this test
@@ -649,7 +649,7 @@ class TestLaunchPlugin(unittest.TestCase):
 
     @patch.object(MutoDefaultLaunchPlugin, "run_script")
     @patch.object(MutoDefaultLaunchPlugin, "find_file")
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_kill_not_script(
         self, mock_launch_plugin, mock_find_file, mock_run_script
     ):
@@ -682,8 +682,8 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch("composer.plugins.launch_plugin.CoreTwin")
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.CoreTwin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_kill_no_current_stack(self, mock_launch_plugin, mock_core_twin):
         request = MagicMock()
         request.start = True
@@ -709,9 +709,9 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertEqual(response.err_msg, "No current stack available or start flag not set.")
         mock_core_twin.assert_not_called()
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
-    @patch('composer.stack_handlers.json_handler.Stack')
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.json_handler.Stack')
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_apply(self, mock_launch_plugin, mock_stack_json, mock_stack_ditto):
         # Use real handlers for this test
         pass  # Registry already initialized in node
@@ -746,9 +746,9 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
-    @patch('composer.stack_handlers.json_handler.Stack')
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.json_handler.Stack')
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_apply_exception(self, mock_launch_plugin, mock_stack_json, mock_stack_ditto):
         request = MagicMock()
         response = MagicMock()
@@ -770,7 +770,7 @@ class TestLaunchPlugin(unittest.TestCase):
         mock_stack_json.assert_not_called()
 
     @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_start_stack_json_content_type(self, mock_launch_plugin, mock_source_workspace):
         """Test handle_start with stack/json content_type."""
         # Use real handlers for this test
@@ -804,7 +804,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertEqual(response.err_msg, "")
 
     @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_start_stack_archive_content_type(self, mock_launch_plugin, mock_source_workspace):
         """Test handle_start with stack/archive content_type."""
         request = MagicMock()
@@ -842,7 +842,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertEqual(response.err_msg, "")
 
     @patch.object(MutoDefaultLaunchPlugin, "source_workspaces")
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_start_raw_payload_type(self, mock_launch_plugin, mock_source_workspace):
         """Test handle_start with raw payload (node/composable)."""
         # Use real handlers for this test
@@ -874,7 +874,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_kill_stack_json_content_type(self, mock_launch_plugin):
         """Test handle_kill with stack/json content_type."""
         # Use real handlers for this test
@@ -908,7 +908,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_kill_stack_archive_content_type(self, mock_launch_plugin):
         """Test handle_kill with stack/archive content_type."""
         # Use real handlers for this test
@@ -949,7 +949,7 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_kill_raw_payload_type(self, mock_launch_plugin):
         """Test handle_kill with raw payload (node/composable)."""
         # Use real handlers for this test
@@ -982,9 +982,9 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
-    @patch('composer.stack_handlers.json_handler.Stack')
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.json_handler.Stack')
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_apply_stack_json_content_type(self, mock_launch_plugin, mock_stack_json, mock_stack_ditto):
         """Test handle_apply with stack/json content_type."""
         # Use real handlers for this test
@@ -1018,9 +1018,9 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
-    @patch('composer.stack_handlers.json_handler.Stack')
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.json_handler.Stack')
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_apply_stack_archive_content_type(self, mock_launch_plugin, mock_stack_json, mock_stack_ditto):
         """Test handle_apply with stack/archive content_type."""
         # Use real handlers for this test
@@ -1061,9 +1061,9 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
-    @patch('composer.stack_handlers.json_handler.Stack')
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.json_handler.Stack')
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_apply_raw_payload_type(self, mock_launch_plugin, mock_stack_json, mock_stack_ditto):
         """Test handle_apply with raw payload (node/composable)."""
         # Use real handlers for this test
@@ -1094,9 +1094,9 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertTrue(response.success)
         self.assertEqual(response.err_msg, "")
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
-    @patch('composer.stack_handlers.json_handler.Stack')
-    @patch("composer.plugins.launch_plugin.LaunchPlugin")
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.json_handler.Stack')
+    @patch("muto_composer.plugins.launch_plugin.LaunchPlugin")
     def test_handle_apply_unknown_content_type(self, mock_launch_plugin, mock_stack_json, mock_stack_ditto):
         """Test handle_apply with unknown content_type uses full payload."""
         request = MagicMock()
@@ -1130,8 +1130,8 @@ class TestLaunchPlugin(unittest.TestCase):
         self.assertFalse(response.success)
         self.assertEqual(response.err_msg, "No current stack available or start flag not set.")
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
-    @patch('composer.stack_handlers.json_handler.Stack')
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.json_handler.Stack')
     def test_handle_start_stack_json_missing_launch_section(self, mock_stack_json, mock_stack_ditto):
         """
         Test that stack/json without launch section fails gracefully.

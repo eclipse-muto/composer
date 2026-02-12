@@ -22,7 +22,7 @@ from rclpy.node import Node
 from std_msgs.msg import String
 from muto_msgs.msg import MutoAction
 from muto_msgs.srv import CoreTwin
-from composer.events import EventBus, StackRequestEvent, EventType
+from muto_composer.events import EventBus, StackRequestEvent, EventType
 
 
 class MessageRouter:

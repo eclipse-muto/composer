@@ -22,7 +22,7 @@ import os
 import unittest
 from pathlib import Path
 
-from composer.utils.stack_parser import StackParser, create_stack_parser
+from muto_composer.utils.stack_parser import StackParser, create_stack_parser
 
 
 class TestTalkerListenerSamples(unittest.TestCase):

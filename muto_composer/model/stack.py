@@ -15,11 +15,11 @@ import logging
 import subprocess
 import os
 import re
-import composer.model.node as node
-import composer.model.param as param
-import composer.model.composable as composable
+import muto_composer.model.node as node
+import muto_composer.model.param as param
+import muto_composer.model.composable as composable
 import rclpy
-from composer.introspection.introspector import Introspector
+from muto_composer.introspection.introspector import Introspector
 from launch import LaunchDescription
 from launch_ros.actions import Node, LoadComposableNodes
 from launch_ros.actions import ComposableNodeContainer

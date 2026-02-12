@@ -14,7 +14,7 @@
 import unittest
 import rclpy
 from unittest.mock import patch, MagicMock
-from composer.model.stack import Stack
+from muto_composer.model.stack import Stack
 
 
 class TestStack(unittest.TestCase):
@@ -261,7 +261,7 @@ class TestStack(unittest.TestCase):
         self.assertIn("param1", param_names)
         self.assertIn("new_param", param_names)
 
-    @patch("composer.model.stack.rclpy")
+    @patch("muto_composer.model.stack.rclpy")
     def test_get_active_nodes(self, mock_rclpy):
         mock_node = MagicMock()
         mock_node.get_node_names_and_namespaces.return_value = [
@@ -281,7 +281,7 @@ class TestStack(unittest.TestCase):
         )
         mock_node.destroy_node.assert_called_once()
 
-    @patch("composer.model.stack.Introspector")
+    @patch("muto_composer.model.stack.Introspector")
     def test_kill_all(self, mock_introspector):
         mock_launcher = MagicMock()
         mock_launcher._active_nodes = [{"node1": 1234}, {"node2": 5678}]
@@ -292,7 +292,7 @@ class TestStack(unittest.TestCase):
         mock_introspector.return_value.kill.assert_any_call("node1", 1234)
         mock_introspector.return_value.kill.assert_any_call("node2", 5678)
 
-    @patch("composer.model.stack.Introspector")
+    @patch("muto_composer.model.stack.Introspector")
     def test_kill_diff(self, mock_introspector):
         mock_launcher = MagicMock()
         mock_launcher._active_nodes = [{"test_exec": 1234}, {"other_exec": 5678}]
@@ -305,7 +305,7 @@ class TestStack(unittest.TestCase):
 
         mock_introspector.return_value.kill.assert_called_once_with("test_exec", 1234)
 
-    @patch("composer.model.stack.subprocess.run")
+    @patch("muto_composer.model.stack.subprocess.run")
     def test_change_params_at_runtime(self, mock_run):
         param_differences = {
             ("node1", "node2"): [
@@ -360,21 +360,21 @@ class TestStack(unittest.TestCase):
         self.assertEqual(len(processed_remaps), 1)
         self.assertEqual(processed_remaps[0], ("from_topic", "to_topic"))
 
-    @patch("composer.model.stack.Introspector")
-    @patch("composer.model.stack.LaunchDescription")
+    @patch("muto_composer.model.stack.Introspector")
+    @patch("muto_composer.model.stack.LaunchDescription")
     def test_launch(self, mock_launch_desc, mock_introspector):
         stack = Stack(manifest=self.sample_manifest)
         mock_launcher = MagicMock()
 
-        with patch("composer.model.stack.ComposableNodeContainer"), patch(
-            "composer.model.stack.ComposableNode"
-        ), patch("composer.model.stack.Node"):
+        with patch("muto_composer.model.stack.ComposableNodeContainer"), patch(
+            "muto_composer.model.stack.ComposableNode"
+        ), patch("muto_composer.model.stack.Node"):
             stack.launch(mock_launcher)
 
         mock_launcher.start.assert_called_once()
 
-    @patch("composer.model.stack.Introspector")
-    @patch("composer.model.stack.LaunchDescription")
+    @patch("muto_composer.model.stack.Introspector")
+    @patch("muto_composer.model.stack.LaunchDescription")
     def test_apply(self, mock_launch_desc, mock_introspector):
         stack = Stack(manifest=self.sample_manifest)
         mock_launcher = MagicMock()
@@ -391,7 +391,7 @@ class TestStack(unittest.TestCase):
         stack = Stack(manifest=self.sample_manifest)
 
         with patch(
-            "composer.model.stack.get_package_share_directory",
+            "muto_composer.model.stack.get_package_share_directory",
             return_value="/fake/path",
         ):
             result = stack.resolve_expression("$(find test_pkg)")

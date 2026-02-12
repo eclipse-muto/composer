@@ -22,9 +22,9 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from std_msgs.msg import String
 from muto_msgs.msg import StackManifest
 from muto_msgs.srv import LaunchPlugin, CoreTwin
-from composer.workflow.launcher import Ros2LaunchParent
-from composer.utils.paths import WORKSPACES_PATH
-from composer.utils.stack_parser import StackParser
+from muto_composer.workflow.launcher import Ros2LaunchParent
+from muto_composer.utils.paths import WORKSPACES_PATH
+from muto_composer.utils.stack_parser import StackParser
 from .base_plugin import BasePlugin, StackContext, StackOperation
 
 

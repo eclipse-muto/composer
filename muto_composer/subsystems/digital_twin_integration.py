@@ -18,7 +18,7 @@ Manages communication with CoreTwin services and digital twin synchronization.
 
 import uuid
 from typing import Dict, Any, Optional, List
-from composer.events import (
+from muto_composer.events import (
     EventBus, EventType, StackAnalyzedEvent, StackRequestEvent,
     OrchestrationStartedEvent
 )

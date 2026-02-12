@@ -18,7 +18,7 @@ Tests that the new modular design works correctly without dependencies on deprec
 
 import unittest
 from unittest.mock import MagicMock, patch
-from composer.events import EventBus, EventType, StackRequestEvent, StackAnalyzedEvent
+from muto_composer.events import EventBus, EventType, StackRequestEvent, StackAnalyzedEvent
 
 
 class TestArchitectureValidation(unittest.TestCase):

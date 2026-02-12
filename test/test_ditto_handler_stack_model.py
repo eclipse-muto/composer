@@ -20,8 +20,8 @@ Tests that DittoStackHandler correctly instantiates Stack model and calls
 import unittest
 from unittest.mock import MagicMock, patch
 
-from composer.stack_handlers.ditto_handler import DittoStackHandler
-from composer.plugins.base_plugin import StackContext, StackOperation
+from muto_composer.stack_handlers.ditto_handler import DittoStackHandler
+from muto_composer.plugins.base_plugin import StackContext, StackOperation
 
 
 class TestDittoStackHandlerCanHandle(unittest.TestCase):
@@ -114,7 +114,7 @@ class TestDittoStackHandlerStackModelIntegration(unittest.TestCase):
             hash="testhash"
         )
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
     def test_start_ditto_instantiates_stack_and_launches(self, mock_stack_class):
         """Test that _start_ditto creates Stack and calls launch()."""
         mock_stack = MagicMock()
@@ -133,7 +133,7 @@ class TestDittoStackHandlerStackModelIntegration(unittest.TestCase):
         mock_stack_class.assert_called_once_with(manifest=payload)
         mock_stack.launch.assert_called_once_with(context.launcher)
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
     def test_start_ditto_with_nested_launch_structure(self, mock_stack_class):
         """Test that _start_ditto handles nested launch structure."""
         mock_stack = MagicMock()
@@ -149,7 +149,7 @@ class TestDittoStackHandlerStackModelIntegration(unittest.TestCase):
         mock_stack_class.assert_called_once_with(manifest=launch_data)
         mock_stack.launch.assert_called_once()
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
     def test_kill_ditto_instantiates_stack_and_kills(self, mock_stack_class):
         """Test that _kill_ditto creates Stack and calls kill()."""
         mock_stack = MagicMock()
@@ -168,7 +168,7 @@ class TestDittoStackHandlerStackModelIntegration(unittest.TestCase):
         mock_stack_class.assert_called_once_with(manifest=payload)
         mock_stack.kill.assert_called_once()
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
     def test_apply_ditto_instantiates_stack_and_applies(self, mock_stack_class):
         """Test that _apply_ditto creates Stack and calls apply()."""
         mock_stack = MagicMock()
@@ -258,7 +258,7 @@ class TestDittoStackHandlerApplyToPlugin(unittest.TestCase):
 
         self.assertTrue(result)
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
     def test_start_operation_delegates_to_start_ditto(self, mock_stack_class):
         """Test that START operation calls _start_ditto."""
         mock_stack = MagicMock()
@@ -274,7 +274,7 @@ class TestDittoStackHandlerApplyToPlugin(unittest.TestCase):
         self.assertTrue(result)
         mock_stack.launch.assert_called_once()
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
     def test_kill_operation_delegates_to_kill_ditto(self, mock_stack_class):
         """Test that KILL operation calls _kill_ditto."""
         mock_stack = MagicMock()
@@ -290,7 +290,7 @@ class TestDittoStackHandlerApplyToPlugin(unittest.TestCase):
         self.assertTrue(result)
         mock_stack.kill.assert_called_once()
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
     def test_apply_operation_delegates_to_apply_ditto(self, mock_stack_class):
         """Test that APPLY operation calls _apply_ditto."""
         mock_stack = MagicMock()
@@ -335,7 +335,7 @@ class TestDittoStackHandlerErrorHandling(unittest.TestCase):
             hash="testhash"
         )
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
     def test_start_handles_stack_exception(self, mock_stack_class):
         """Test that exceptions during start are handled gracefully."""
         mock_stack_class.side_effect = Exception("Stack creation failed")
@@ -348,7 +348,7 @@ class TestDittoStackHandlerErrorHandling(unittest.TestCase):
         self.assertFalse(result)
         self.handler.logger.error.assert_called()
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
     def test_kill_handles_stack_exception(self, mock_stack_class):
         """Test that exceptions during kill are handled gracefully."""
         mock_stack_class.side_effect = Exception("Stack creation failed")
@@ -361,7 +361,7 @@ class TestDittoStackHandlerErrorHandling(unittest.TestCase):
         self.assertFalse(result)
         self.handler.logger.error.assert_called()
 
-    @patch('composer.stack_handlers.ditto_handler.Stack')
+    @patch('muto_composer.stack_handlers.ditto_handler.Stack')
     def test_apply_handles_stack_exception(self, mock_stack_class):
         """Test that exceptions during apply are handled gracefully."""
         mock_stack_class.side_effect = Exception("Stack creation failed")

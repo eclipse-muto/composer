@@ -24,16 +24,16 @@ from rclpy.node import Node
 from std_msgs.msg import String
 from muto_msgs.msg import MutoAction
 from rclpy.callback_groups import ReentrantCallbackGroup
-from composer.events import EventBus, EventType, StackRequestEvent, ProcessCrashedEvent
-from composer.subsystems.message_handler import MessageHandler
-from composer.subsystems.stack_manager import StackManager
-from composer.subsystems.orchestration_manager import OrchestrationManager
-from composer.subsystems.pipeline_engine import PipelineEngine
-from composer.subsystems.digital_twin_integration import DigitalTwinIntegration
+from muto_composer.events import EventBus, EventType, StackRequestEvent, ProcessCrashedEvent
+from muto_composer.subsystems.message_handler import MessageHandler
+from muto_composer.subsystems.stack_manager import StackManager
+from muto_composer.subsystems.orchestration_manager import OrchestrationManager
+from muto_composer.subsystems.pipeline_engine import PipelineEngine
+from muto_composer.subsystems.digital_twin_integration import DigitalTwinIntegration
 
 # Legacy imports for test compatibility
-from composer.workflow.pipeline import Pipeline
-from composer.utils.stack_parser import create_stack_parser
+from muto_composer.workflow.pipeline import Pipeline
+from muto_composer.utils.stack_parser import create_stack_parser
 
 
 class MutoComposer(Node):

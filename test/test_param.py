@@ -12,13 +12,13 @@
 #
 
 import unittest
-import composer.model.param as param
+import muto_composer.model.param as param
 from unittest.mock import MagicMock, patch
 
 
 class TestParam(unittest.TestCase):
 
-    @patch("composer.model.param.Param._resolve_value")
+    @patch("muto_composer.model.param.Param._resolve_value")
     def setUp(self, mock_resolve_value):
         self.mock_stack = MagicMock()
         self.param = param.Param(

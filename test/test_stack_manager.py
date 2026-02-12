@@ -13,8 +13,8 @@
 
 import unittest
 from unittest.mock import MagicMock, patch
-from composer.events import EventBus, EventType, StackRequestEvent
-from composer.subsystems.stack_manager import (
+from muto_composer.events import EventBus, EventType, StackRequestEvent
+from muto_composer.subsystems.stack_manager import (
     StackManager, StackAnalyzer, StackProcessor, StackStateManager,
     StackType, ExecutionRequirements
 )
@@ -254,11 +254,11 @@ class TestStackProcessor(unittest.TestCase):
         self.logger = MagicMock()
         
         # Mock the stack parser
-        with patch('composer.subsystems.stack_manager.create_stack_parser') as mock_parser:
+        with patch('muto_composer.subsystems.stack_manager.create_stack_parser') as mock_parser:
             mock_parser.return_value = MagicMock()
             self.processor = StackProcessor(self.event_bus, self.logger)
     
-    @patch('composer.subsystems.stack_manager.Stack')
+    @patch('muto_composer.subsystems.stack_manager.Stack')
     def test_merge_stacks(self, mock_stack_class):
         """Test stack merging functionality."""
         # Setup mock Stack behavior
@@ -297,7 +297,7 @@ class TestStackProcessor(unittest.TestCase):
             self.assertIn('/home/user/test', result)
             self.assertNotIn('$(env HOME)', result)
     
-    @patch('composer.subsystems.stack_manager.get_package_share_directory')
+    @patch('muto_composer.subsystems.stack_manager.get_package_share_directory')
     def test_resolve_expressions_find(self, mock_get_package):
         """Test find expression resolution."""
         mock_get_package.return_value = '/opt/ros/jazzy/share/test_package'
@@ -377,7 +377,7 @@ class TestStackManager(unittest.TestCase):
         self.logger = MagicMock()
         
         # Mock the dependencies
-        with patch('composer.subsystems.stack_manager.create_stack_parser'):
+        with patch('muto_composer.subsystems.stack_manager.create_stack_parser'):
             self.stack_manager = StackManager(self.event_bus, self.logger)
     
     def test_initialization(self):

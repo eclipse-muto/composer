@@ -26,8 +26,8 @@ from typing import Any, Dict
 from urllib.parse import urlparse
 from typing import Optional
 
-from composer.plugins.base_plugin import BasePlugin, StackTypeHandler, StackContext, StackOperation
-from composer.utils.paths import WORKSPACES_PATH, ARTIFACT_STATE_FILE
+from muto_composer.plugins.base_plugin import BasePlugin, StackTypeHandler, StackContext, StackOperation
+from muto_composer.utils.paths import WORKSPACES_PATH, ARTIFACT_STATE_FILE
 
 
 

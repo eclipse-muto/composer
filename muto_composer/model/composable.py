@@ -12,7 +12,7 @@
 #
 
 import os
-import composer.model.node as node
+import muto_composer.model.node as node
 
 class Container:
     def __init__(self, stack, manifest=None):

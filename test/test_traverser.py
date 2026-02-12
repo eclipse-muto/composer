@@ -16,7 +16,7 @@ import unittest
 from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
 
-from composer.introspection.traverser import (
+from muto_composer.introspection.traverser import (
     recursively_extract_entities,
     resolve_substitutions,
 )

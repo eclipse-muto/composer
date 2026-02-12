@@ -18,7 +18,7 @@ from launch import LaunchDescription
 
 import rclpy
 
-from composer.workflow.launcher import Ros2LaunchParent
+from muto_composer.workflow.launcher import Ros2LaunchParent
 
 
 class TestLauncher(unittest.TestCase):
@@ -252,7 +252,7 @@ class TestLauncher(unittest.TestCase):
         mock_new.assert_called_once()
         mock_set.assert_called_once()
 
-    @patch("composer.workflow.launcher.Node")
+    @patch("muto_composer.workflow.launcher.Node")
     @patch("launch.LaunchDescription.add_action")
     def test_create_launch_description_for_added_nodes(
         self, mock_add_action, mock_node

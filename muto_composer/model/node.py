@@ -13,7 +13,7 @@
 
 import logging
 import os
-import composer.model.param as param
+import muto_composer.model.param as param
 from lifecycle_msgs.msg import Transition, State
 from lifecycle_msgs.srv import GetState, GetAvailableTransitions, GetAvailableStates, ChangeState
 import rclpy

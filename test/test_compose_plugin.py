@@ -16,8 +16,8 @@ import unittest
 import json
 from unittest.mock import MagicMock, patch
 from std_msgs.msg import String
-from composer.plugins.compose_plugin import MutoDefaultComposePlugin
-from composer.utils.stack_parser import StackParser
+from muto_composer.plugins.compose_plugin import MutoDefaultComposePlugin
+from muto_composer.utils.stack_parser import StackParser
 
 
 class TestComposePlugin(unittest.TestCase):
@@ -106,7 +106,7 @@ class TestComposePlugin(unittest.TestCase):
         self.assertFalse(response.success)
         self.assertIn("dummy_exception", response.err_msg)
 
-    @patch("composer.plugins.compose_plugin.StackManifest")
+    @patch("muto_composer.plugins.compose_plugin.StackManifest")
     def test_parse_stack(self, mock_stack_manifest):
         distro = os.environ.get('ROS_DISTRO', 'humble')
         stack_msg = String(

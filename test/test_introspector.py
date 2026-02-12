@@ -14,7 +14,7 @@
 import unittest
 from unittest.mock import patch, call
 import subprocess
-from composer.introspection.introspector import Introspector
+from muto_composer.introspection.introspector import Introspector
 
 
 class TestIntrospector(unittest.TestCase):

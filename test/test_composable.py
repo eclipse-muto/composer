@@ -13,12 +13,12 @@
 
 import unittest
 from unittest.mock import MagicMock, patch
-from composer.model.composable import Container
+from muto_composer.model.composable import Container
 
 
 class TestComposable(unittest.TestCase):
 
-    @patch("composer.model.composable.node")
+    @patch("muto_composer.model.composable.node")
     def test_toManifest(self, mock_node):
         self.node = Container(MagicMock(), None)
         returned_value = self.node.toManifest()

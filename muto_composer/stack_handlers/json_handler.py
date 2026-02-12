@@ -12,9 +12,9 @@
 #
 
 from typing import Dict, Any
-from composer.plugins.base_plugin import StackTypeHandler, BasePlugin, StackContext, StackOperation
-from composer.model.stack import Stack
-from composer.workflow.launcher import Ros2LaunchParent
+from muto_composer.plugins.base_plugin import StackTypeHandler, BasePlugin, StackContext, StackOperation
+from muto_composer.model.stack import Stack
+from muto_composer.workflow.launcher import Ros2LaunchParent
 
 
 class JsonStackHandler(StackTypeHandler):

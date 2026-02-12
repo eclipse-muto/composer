@@ -23,14 +23,14 @@ from typing import Dict, Any, Optional
 from enum import Enum
 from dataclasses import dataclass
 from ament_index_python.packages import get_package_share_directory
-from composer.model.stack import Stack
-from composer.utils.stack_parser import create_stack_parser
-from composer.events import (
+from muto_composer.model.stack import Stack
+from muto_composer.utils.stack_parser import create_stack_parser
+from muto_composer.events import (
     EventBus, EventType, StackRequestEvent, StackAnalyzedEvent,
     StackMergedEvent, StackTransformedEvent, StackProcessedEvent,
     OrchestrationFailedEvent
 )
-from composer.state.persistence import StatePersistence
+from muto_composer.state.persistence import StatePersistence
 
 
 class StackType(Enum):

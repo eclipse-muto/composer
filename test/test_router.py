@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import rclpy
 
-from composer.workflow.router import Router
+from muto_composer.workflow.router import Router
 
 
 class TestRouter(unittest.TestCase):
@@ -39,7 +39,7 @@ class TestRouter(unittest.TestCase):
         rclpy.shutdown()
 
     @patch("rclpy.logging")
-    @patch("composer.workflow.router.Pipeline.execute_pipeline")
+    @patch("muto_composer.workflow.router.Pipeline.execute_pipeline")
     def test_route(self, mock_pipeline, mock_logging):
         main_route = Router(self.pipelines)
         main_route.route(self.payload.get("action", ""))

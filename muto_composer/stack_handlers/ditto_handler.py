@@ -12,8 +12,8 @@
 #
 
 from typing import Dict, Any
-from composer.plugins.base_plugin import BasePlugin, StackTypeHandler, StackContext, StackOperation
-from composer.model.stack import Stack
+from muto_composer.plugins.base_plugin import BasePlugin, StackTypeHandler, StackContext, StackOperation
+from muto_composer.model.stack import Stack
 
 
 class DittoStackHandler(StackTypeHandler):

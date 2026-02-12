@@ -18,7 +18,7 @@ from muto_msgs.msg._stack_manifest import StackManifest
 import rclpy
 from rclpy.node import Node
 import rclpy.logging
-from composer.workflow.safe_evaluator import SafeEvaluator
+from muto_composer.workflow.safe_evaluator import SafeEvaluator
 
 class Pipeline:
     def __init__(self, name, steps, compensation):

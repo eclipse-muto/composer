@@ -16,7 +16,7 @@ from unittest.mock import patch, MagicMock
 import rclpy
 from rclpy.node import Node
 
-from composer.workflow.pipeline import Pipeline
+from muto_composer.workflow.pipeline import Pipeline
 
 
 class TestPipeline(unittest.TestCase):

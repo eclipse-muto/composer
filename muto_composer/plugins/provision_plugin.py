@@ -14,7 +14,7 @@
 import rclpy
 from muto_msgs.srv import ProvisionPlugin
 from .base_plugin import BasePlugin, StackOperation
-from composer.utils.paths import WORKSPACES_PATH, ARTIFACT_STATE_FILE
+from muto_composer.utils.paths import WORKSPACES_PATH, ARTIFACT_STATE_FILE
 
 
 class MutoProvisionPlugin(BasePlugin):

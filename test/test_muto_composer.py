@@ -17,8 +17,8 @@ import json
 import asyncio
 from unittest.mock import MagicMock, patch, AsyncMock
 from muto_msgs.msg import MutoAction
-from composer.muto_composer import MutoComposer
-from composer.events import (
+from muto_composer.muto_composer import MutoComposer
+from muto_composer.events import (
     EventBus, EventType, StackRequestEvent, StackAnalyzedEvent,
     StackProcessedEvent, OrchestrationStartedEvent, PipelineEvents
 )
@@ -39,8 +39,8 @@ class TestMutoComposerIntegration(unittest.TestCase):
             pass
         
         # Mock node creation to avoid actual ROS initialization
-        with patch('composer.muto_composer.MutoComposer._initialize_subsystems'), \
-             patch('composer.muto_composer.MutoComposer._setup_ros_interfaces'):
+        with patch('muto_composer.muto_composer.MutoComposer._initialize_subsystems'), \
+             patch('muto_composer.muto_composer.MutoComposer._setup_ros_interfaces'):
             self.composer = MutoComposer()
         
         # Setup test components
@@ -94,8 +94,8 @@ import json
 import asyncio
 from unittest.mock import MagicMock, patch, AsyncMock
 from muto_msgs.msg import MutoAction
-from composer.muto_composer import MutoComposer
-from composer.events import (
+from muto_composer.muto_composer import MutoComposer
+from muto_composer.events import (
     EventBus, EventType, StackRequestEvent, StackAnalyzedEvent,
     StackProcessedEvent, OrchestrationStartedEvent, PipelineEvents
 )
@@ -116,8 +116,8 @@ class TestMutoComposerIntegration(unittest.TestCase):
             pass
         
         # Mock node creation to avoid actual ROS initialization
-        with patch('composer.muto_composer.MutoComposer._initialize_subsystems'), \
-             patch('composer.muto_composer.MutoComposer._setup_ros_interfaces'):
+        with patch('muto_composer.muto_composer.MutoComposer._initialize_subsystems'), \
+             patch('muto_composer.muto_composer.MutoComposer._setup_ros_interfaces'):
             self.composer = MutoComposer()
         
         # Setup test components
@@ -441,8 +441,8 @@ class TestMutoComposerLegacyCompatibility(unittest.TestCase):
         except:
             pass
             
-        with patch('composer.muto_composer.MutoComposer._initialize_subsystems'), \
-             patch('composer.muto_composer.MutoComposer._setup_ros_interfaces'):
+        with patch('muto_composer.muto_composer.MutoComposer._initialize_subsystems'), \
+             patch('muto_composer.muto_composer.MutoComposer._setup_ros_interfaces'):
             self.composer = MutoComposer()
 
     def tearDown(self) -> None:

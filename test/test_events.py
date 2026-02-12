@@ -13,7 +13,7 @@
 
 import unittest
 from unittest.mock import MagicMock, patch
-from composer.events import (
+from muto_composer.events import (
     EventBus, EventType, BaseComposeEvent, StackRequestEvent,
     StackAnalyzedEvent, OrchestrationStartedEvent
 )

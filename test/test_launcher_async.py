@@ -14,7 +14,7 @@
 import unittest
 from unittest.mock import MagicMock, patch, AsyncMock
 import rclpy
-from composer.workflow.launcher import Ros2LaunchParent
+from muto_composer.workflow.launcher import Ros2LaunchParent
 
 
 class TestLauncherAsync(unittest.IsolatedAsyncioTestCase):
@@ -30,10 +30,10 @@ class TestLauncherAsync(unittest.IsolatedAsyncioTestCase):
         rclpy.shutdown()
 
     @patch("rclpy.logging")
-    @patch("composer.workflow.launcher.OnProcessExit")
-    @patch("composer.workflow.launcher.RegisterEventHandler")
+    @patch("muto_composer.workflow.launcher.OnProcessExit")
+    @patch("muto_composer.workflow.launcher.RegisterEventHandler")
     @patch.object(Ros2LaunchParent, "parse_launch_arguments")
-    @patch("composer.workflow.launcher.launch")
+    @patch("muto_composer.workflow.launcher.launch")
     async def test_launch_a_launch_file_test(
         self,
         mock_launch,

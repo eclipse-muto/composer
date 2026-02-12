@@ -26,7 +26,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from enum import Enum
 
-from composer.utils.paths import get_state_path
+from muto_composer.utils.paths import get_state_path
 
 
 class DeploymentStatus(Enum):

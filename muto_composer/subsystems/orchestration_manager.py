@@ -18,15 +18,15 @@ Handles high-level deployment workflows and coordination.
 
 import uuid
 from typing import Dict, Any, Optional
-from composer.subsystems.stack_manager import StackType
+from muto_composer.subsystems.stack_manager import StackType
 from dataclasses import dataclass
-from composer.events import (
+from muto_composer.events import (
     EventBus, EventType, StackAnalyzedEvent, OrchestrationStartedEvent,
     OrchestrationCompletedEvent, OrchestrationFailedEvent, PipelineRequestedEvent,
     PipelineCompletedEvent, PipelineFailedEvent, RollbackStartedEvent, RollbackCompletedEvent,
     RollbackFailedEvent, ProcessCrashedEvent
 )
-from composer.state.persistence import StatePersistence
+from muto_composer.state.persistence import StatePersistence
 
 
 @dataclass

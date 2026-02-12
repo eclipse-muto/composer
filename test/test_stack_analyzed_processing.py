@@ -7,8 +7,8 @@ Tests that handle_stack_analyzed properly processes and emits results.
 
 import unittest
 from unittest.mock import MagicMock, patch
-from composer.events import EventBus, EventType, StackAnalyzedEvent, StackProcessedEvent
-from composer.subsystems.stack_manager import StackProcessor
+from muto_composer.events import EventBus, EventType, StackAnalyzedEvent, StackProcessedEvent
+from muto_composer.subsystems.stack_manager import StackProcessor
 
 
 class TestStackAnalyzedProcessing(unittest.TestCase):
@@ -18,7 +18,7 @@ class TestStackAnalyzedProcessing(unittest.TestCase):
         self.logger = MagicMock()
         
         # Mock the stack parser
-        with patch('composer.subsystems.stack_manager.create_stack_parser') as mock_parser:
+        with patch('muto_composer.subsystems.stack_manager.create_stack_parser') as mock_parser:
             mock_parser.return_value = MagicMock()
             self.processor = StackProcessor(self.event_bus, self.logger)
     

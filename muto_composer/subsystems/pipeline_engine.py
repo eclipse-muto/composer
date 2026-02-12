@@ -22,9 +22,9 @@ import uuid
 from typing import Dict, Any, Optional
 from ament_index_python.packages import get_package_share_directory
 from jsonschema import validate, ValidationError
-from composer.workflow.pipeline import Pipeline
-from composer.workflow.schemas.pipeline_schema import PIPELINE_SCHEMA
-from composer.events import (
+from muto_composer.workflow.pipeline import Pipeline
+from muto_composer.workflow.schemas.pipeline_schema import PIPELINE_SCHEMA
+from muto_composer.events import (
     EventBus, EventType, OrchestrationStartedEvent, PipelineRequestedEvent,
     PipelineStartedEvent, PipelineCompletedEvent, PipelineFailedEvent
 )
@@ -40,7 +40,7 @@ class PipelineManager:
         # Set default config path if not provided
         if not config_path:
             config_path = os.path.join(
-                get_package_share_directory("composer"), "config", "pipeline.yaml"
+                get_package_share_directory("muto_composer"), "config", "pipeline.yaml"
             )
         
         self.config_path = config_path

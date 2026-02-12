@@ -20,7 +20,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 import time
 
-from composer.subsystems.watchdog import (
+from muto_composer.subsystems.watchdog import (
     ComposerWatchdog,
     HealthStatus,
     SubsystemHealth,

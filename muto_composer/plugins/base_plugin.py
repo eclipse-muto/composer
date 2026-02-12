@@ -22,8 +22,8 @@ from threading import Event
 
 import rclpy
 from rclpy.node import Node
-from composer.utils.stack_parser import StackParser
-from composer.utils.paths import WORKSPACES_PATH, ARTIFACT_STATE_FILE
+from muto_composer.utils.stack_parser import StackParser
+from muto_composer.utils.paths import WORKSPACES_PATH, ARTIFACT_STATE_FILE
 from muto_msgs.srv import CoreTwin
 
 
@@ -55,7 +55,7 @@ class BasePlugin(Node):
     """Base class for stack plugins implementing the Plugin interface."""
 
     def __init__(self, node_name: str):
-        from composer.stack_handlers.registry import StackTypeRegistry
+        from muto_composer.stack_handlers.registry import StackTypeRegistry
         Node.__init__(self, node_name)
         self._stack_definition_client = self.create_client(
             CoreTwin, "/muto/core_twin/get_stack_definition"

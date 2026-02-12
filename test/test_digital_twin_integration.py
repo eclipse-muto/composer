@@ -14,8 +14,8 @@
 import unittest
 from unittest.mock import MagicMock, patch, AsyncMock, call
 import asyncio
-from composer.events import EventBus, EventType, StackProcessedEvent, TwinUpdateEvent
-from composer.subsystems.digital_twin_integration import (
+from muto_composer.events import EventBus, EventType, StackProcessedEvent, TwinUpdateEvent
+from muto_composer.subsystems.digital_twin_integration import (
     TwinServiceClient, TwinSynchronizer, DigitalTwinIntegration
 )
 

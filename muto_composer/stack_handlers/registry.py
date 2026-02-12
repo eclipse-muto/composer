@@ -14,7 +14,7 @@
 from typing import Dict, List, Optional
 
 from rclpy.node import Node
-from composer.plugins.base_plugin import StackTypeHandler
+from muto_composer.plugins.base_plugin import StackTypeHandler
 
 
 class StackTypeRegistry:

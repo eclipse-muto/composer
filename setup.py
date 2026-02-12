@@ -15,7 +15,7 @@ import os
 from setuptools import find_packages, setup
 from glob import glob
 
-PACKAGE_NAME = "composer"
+PACKAGE_NAME = "muto_composer"
 
 setup(
     name=PACKAGE_NAME,
@@ -33,15 +33,13 @@ setup(
     maintainer_email="info@composiv.ai",
     description="Eclipse Muto Composer - stack deployment and orchestration engine that manages provisioning, launching, and lifecycle of ROS 2 software stacks",
     license="Eclipse Public License v2.0",
-    tests_require=["unittest", "pytest"],
-    test_suite="test",
     entry_points={
         "console_scripts": [
-            "muto_composer = composer.muto_composer:main",
-            "compose_plugin = composer.plugins.compose_plugin:main",
-            "provision_plugin = composer.plugins.provision_plugin:main",
-            "launch_plugin = composer.plugins.launch_plugin:main",
-            "daemon = composer.introspection.muto_daemon:main",
+            "muto_composer = muto_composer.muto_composer:main",
+            "compose_plugin = muto_composer.plugins.compose_plugin:main",
+            "provision_plugin = muto_composer.plugins.provision_plugin:main",
+            "launch_plugin = muto_composer.plugins.launch_plugin:main",
+            "daemon = muto_composer.introspection.muto_daemon:main",
         ],
     },
 )

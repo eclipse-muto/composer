@@ -23,10 +23,10 @@ import unittest
 from unittest.mock import MagicMock, patch
 import rclpy
 
-from composer.plugins.launch_plugin import MutoDefaultLaunchPlugin
-from composer.plugins.provision_plugin import MutoProvisionPlugin
-from composer.plugins.compose_plugin import MutoDefaultComposePlugin
-from composer.stack_handlers.registry import StackTypeRegistry
+from muto_composer.plugins.launch_plugin import MutoDefaultLaunchPlugin
+from muto_composer.plugins.provision_plugin import MutoProvisionPlugin
+from muto_composer.plugins.compose_plugin import MutoDefaultComposePlugin
+from muto_composer.stack_handlers.registry import StackTypeRegistry
 
 
 class TestStackHandlerIntegration(unittest.TestCase):
@@ -93,7 +93,7 @@ class TestStackHandlerIntegration(unittest.TestCase):
         self.assertIsNotNone(handler)
         self.assertEqual(handler.__class__.__name__, "DittoStackHandler")
 
-    @patch('composer.stack_handlers.json_handler.Stack')
+    @patch('muto_composer.stack_handlers.json_handler.Stack')
     def test_launch_plugin_json_stack_integration(self, mock_stack):
         """Integration test: Launch plugin with JSON stack."""
         plugin = MutoDefaultLaunchPlugin()
@@ -260,7 +260,7 @@ class TestStackHandlerLifecycle(unittest.TestCase):
     def tearDownClass(cls):
         rclpy.shutdown()
 
-    @patch('composer.stack_handlers.json_handler.Stack')
+    @patch('muto_composer.stack_handlers.json_handler.Stack')
     def test_json_stack_lifecycle(self, mock_stack):
         """Test complete lifecycle of a JSON stack."""
         launch_plugin = MutoDefaultLaunchPlugin()
