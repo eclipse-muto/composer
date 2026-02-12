@@ -1,6 +1,9 @@
 # Muto Composer
 
 [![CI](https://github.com/eclipse-muto/composer/actions/workflows/colcon-build.yml/badge.svg)](https://github.com/eclipse-muto/composer/actions/workflows/colcon-build.yml)
+![ROS 2 Foxy](https://img.shields.io/badge/ROS%202-Foxy-blue)
+![ROS 2 Humble](https://img.shields.io/badge/ROS%202-Humble-blue)
+![ROS 2 Jazzy](https://img.shields.io/badge/ROS%202-Jazzy-blue)
 
 **Muto Composer** is a ROS 2 package designed to organize and automate the software deployment process to a fleet of vehicles. It streamlines the workflow by managing stack definitions, resolving dependencies, handling buildjobs and orchestrating the execution of various pipelines.
 
