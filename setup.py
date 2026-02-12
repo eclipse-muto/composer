@@ -33,6 +33,7 @@ setup(
     maintainer_email="info@composiv.ai",
     description="Eclipse Muto Composer - stack deployment and orchestration engine that manages provisioning, launching, and lifecycle of ROS 2 software stacks",
     license="Eclipse Public License v2.0",
+    python_requires=">=3.10",
     entry_points={
         "console_scripts": [
             "muto_composer = muto_composer.muto_composer:main",
