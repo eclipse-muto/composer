@@ -19,7 +19,7 @@ PACKAGE_NAME = "composer"
 
 setup(
     name=PACKAGE_NAME,
-    version="0.0.0",
+    version="0.42.0",
     packages=find_packages(exclude=["test"]),
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + PACKAGE_NAME]),
@@ -31,8 +31,8 @@ setup(
     zip_safe=True,
     maintainer="composiv.ai",
     maintainer_email="info@composiv.ai",
-    description="Composer provides orchestration utilites for ROS2 environment",
-    license="Eclipse Public License",
+    description="Eclipse Muto Composer - stack deployment and orchestration engine that manages provisioning, launching, and lifecycle of ROS 2 software stacks",
+    license="Eclipse Public License v2.0",
     tests_require=["unittest", "pytest"],
     test_suite="test",
     entry_points={

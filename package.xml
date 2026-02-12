@@ -18,10 +18,10 @@
 
 <package format="3">
   <name>composer</name>
-  <version>0.2.0</version>
-  <description>Composer provides orchestration utilites for ROS2 environment</description>
+  <version>0.42.0</version>
+  <description>Eclipse Muto Composer - stack deployment and orchestration engine that manages provisioning, launching, and lifecycle of ROS 2 software stacks</description>
   <maintainer email="info@composiv.ai">composiv.ai</maintainer>
-  <license>Eclipse Public License</license>
+  <license>Eclipse Public License v2.0</license>
   
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
