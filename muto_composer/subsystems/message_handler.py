@@ -111,12 +111,8 @@ class ServiceClientManager:
         self.logger = node.get_logger()
 
         # Initialize service clients
-        self.get_stack_client = node.create_client(
-            CoreTwin, f"{core_twin_node_name}/get_stack_definition"
-        )
-        self.set_stack_client = node.create_client(
-            CoreTwin, f"{core_twin_node_name}/set_current_stack"
-        )
+        self.get_stack_client = node.create_client(CoreTwin, f"{core_twin_node_name}/get_stack_definition")
+        self.set_stack_client = node.create_client(CoreTwin, f"{core_twin_node_name}/set_current_stack")
 
     async def get_stack_definition(self, stack_id: str) -> dict[str, Any] | None:
         """Retrieve stack definition from twin service."""
@@ -128,7 +124,7 @@ class ServiceClientManager:
                 self.logger.error("CoreTwin get_stack_definition service not available")
                 return None
 
-            future = self.get_stack_client.call_async(request)
+            self.get_stack_client.call_async(request)
             # Note: In real implementation, this would be properly awaited
             # For now, we'll use the existing callback pattern
 
@@ -148,7 +144,7 @@ class ServiceClientManager:
                 self.logger.error("CoreTwin set_current_stack service not available")
                 return False
 
-            future = self.set_stack_client.call_async(request)
+            self.set_stack_client.call_async(request)
             # Note: In real implementation, this would be properly awaited
 
             return True  # Placeholder

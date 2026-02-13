@@ -200,10 +200,7 @@ class TestHealthStatusLogic(unittest.TestCase):
         degraded_count = 0
 
         if failed_count > 0:
-            if healthy_count > 0:
-                status = HealthStatus.DEGRADED
-            else:
-                status = HealthStatus.FAILED
+            status = HealthStatus.DEGRADED if healthy_count > 0 else HealthStatus.FAILED
         elif degraded_count > 0:
             status = HealthStatus.DEGRADED
         else:
@@ -218,10 +215,7 @@ class TestHealthStatusLogic(unittest.TestCase):
         degraded_count = 0
 
         if failed_count > 0:
-            if healthy_count > 0:
-                status = HealthStatus.DEGRADED
-            else:
-                status = HealthStatus.FAILED
+            status = HealthStatus.DEGRADED if healthy_count > 0 else HealthStatus.FAILED
         elif degraded_count > 0:
             status = HealthStatus.DEGRADED
         else:
@@ -236,10 +230,7 @@ class TestHealthStatusLogic(unittest.TestCase):
         degraded_count = 0
 
         if failed_count > 0:
-            if healthy_count > 0:
-                status = HealthStatus.DEGRADED
-            else:
-                status = HealthStatus.FAILED
+            status = HealthStatus.DEGRADED if healthy_count > 0 else HealthStatus.FAILED
         elif degraded_count > 0:
             status = HealthStatus.DEGRADED
         else:

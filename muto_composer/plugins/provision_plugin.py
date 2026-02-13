@@ -22,13 +22,9 @@ class MutoProvisionPlugin(BasePlugin):
 
     def __init__(self):
         super().__init__("provision_plugin")
-        self.provision_srv = self.create_service(
-            ProvisionPlugin, "muto_provision", self.handle_provision
-        )
+        self.provision_srv = self.create_service(ProvisionPlugin, "muto_provision", self.handle_provision)
 
-    def handle_provision(
-        self, request: ProvisionPlugin.Request, response: ProvisionPlugin.Response
-    ):
+    def handle_provision(self, request: ProvisionPlugin.Request, response: ProvisionPlugin.Response):
         """Service handler to prepare the workspace using double dispatch pattern."""
         handler, context = self.find_stack_handler(request)
         try:

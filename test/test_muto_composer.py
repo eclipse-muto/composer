@@ -11,6 +11,7 @@
 #   Composiv.ai - initial API and implementation
 #
 
+import contextlib
 import json
 import unittest
 from unittest.mock import patch
@@ -38,10 +39,8 @@ class TestMutoComposerIntegration(unittest.TestCase):
 
     def setUp(self) -> None:
         # Initialize ROS if not already done
-        try:
+        with contextlib.suppress(BaseException):
             rclpy.init()
-        except:
-            pass
 
         # Mock node creation to avoid actual ROS initialization
         with (
@@ -62,24 +61,18 @@ class TestMutoComposerIntegration(unittest.TestCase):
             )
 
     def tearDown(self) -> None:
-        try:
+        with contextlib.suppress(BaseException):
             self.composer.destroy_node()
-        except:
-            pass
 
     @classmethod
     def setUpClass(cls) -> None:
-        try:
+        with contextlib.suppress(BaseException):
             rclpy.init()
-        except:
-            pass
 
     @classmethod
     def tearDownClass(cls) -> None:
-        try:
+        with contextlib.suppress(BaseException):
             rclpy.shutdown()
-        except:
-            pass
 
 
 #
@@ -107,10 +100,8 @@ class TestMutoComposerIntegration(unittest.TestCase):
 
     def setUp(self) -> None:
         # Initialize ROS if not already done
-        try:
+        with contextlib.suppress(BaseException):
             rclpy.init()
-        except:
-            pass
 
         # Mock node creation to avoid actual ROS initialization
         with (
@@ -131,24 +122,18 @@ class TestMutoComposerIntegration(unittest.TestCase):
             )
 
     def tearDown(self) -> None:
-        try:
+        with contextlib.suppress(BaseException):
             self.composer.destroy_node()
-        except:
-            pass
 
     @classmethod
     def setUpClass(cls) -> None:
-        try:
+        with contextlib.suppress(BaseException):
             rclpy.init()
-        except:
-            pass
 
     @classmethod
     def tearDownClass(cls) -> None:
-        try:
+        with contextlib.suppress(BaseException):
             rclpy.shutdown()
-        except:
-            pass
 
     def test_muto_action_to_stack_request_flow(self):
         """Test the complete flow from MutoAction to StackRequest event."""
@@ -187,7 +172,7 @@ class TestMutoComposerIntegration(unittest.TestCase):
 
         # In a real system, StackManager would process this and emit StackAnalyzed
         # For testing, we simulate the expected behavior
-        analyzed_events = self.captured_events.get(EventType.STACK_ANALYZED, [])
+        self.captured_events.get(EventType.STACK_ANALYZED, [])
         # Would verify that StackManager processed the request
 
         # Verify event was received (integration test for event flow)
@@ -308,13 +293,6 @@ class TestMutoComposerIntegration(unittest.TestCase):
         self.assertTrue(hasattr(self.composer, "event_bus"))
 
         # Verify subsystems exist (would be initialized in real system)
-        subsystem_attrs = [
-            "stack_manager",
-            "orchestration_manager",
-            "pipeline_engine",
-            "message_handler",
-            "digital_twin_integration",
-        ]
 
         # In the new architecture, these would be initialized
         # For now, verify the event bus is the communication mechanism
@@ -417,10 +395,8 @@ class TestMutoComposerLegacyCompatibility(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        try:
+        with contextlib.suppress(BaseException):
             rclpy.init()
-        except:
-            pass
 
         with (
             patch("muto_composer.muto_composer.MutoComposer._initialize_subsystems"),
@@ -429,10 +405,8 @@ class TestMutoComposerLegacyCompatibility(unittest.TestCase):
             self.composer = MutoComposer()
 
     def tearDown(self) -> None:
-        try:
+        with contextlib.suppress(BaseException):
             self.composer.destroy_node()
-        except:
-            pass
 
     def test_legacy_stack_parser_compatibility(self):
         """Test backward compatibility with stack parser."""

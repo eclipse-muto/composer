@@ -38,7 +38,7 @@ LOADACTION = "load"
 class Stack:
     """The class that contains all stack related operations (apply, kill, stack, merge etc.)"""
 
-    def __init__(self, manifest={}, parent=None):
+    def __init__(self, manifest=None, parent=None):
         """Initialize the Stack object.
 
         Args:
@@ -46,6 +46,8 @@ class Stack:
             parent (object, optional): The parent stack object. Defaults to None.
         """
 
+        if manifest is None:
+            manifest = {}
         self.manifest = manifest
         self.parent = parent
         self.name = manifest.get("name", "")
@@ -65,7 +67,7 @@ class Stack:
         """Initialize the stack elements (nodes, composable nodes, parameters etc.)"""
 
         self.stack = []
-        referenced_stacks = self.manifest.get("stack", [])
+        self.manifest.get("stack", [])
 
         self.node = []
         for nDef in self.manifest.get("node", []):
@@ -186,10 +188,10 @@ class Stack:
 
         def params_to_flat_dict(params):
             flat_dict = {}
-            for param in params:
-                if isinstance(param, dict):
-                    for key in param:
-                        flat_dict[key] = param.get(key)
+            for p in params:
+                if isinstance(p, dict):
+                    for key in p:
+                        flat_dict[key] = p.get(key)
             return flat_dict
 
         dict_params1 = params_to_flat_dict(params1)
@@ -234,12 +236,12 @@ class Stack:
     def _merge_nodes(self, merged, other):
         common, difference, added = self.compare_nodes(other)
 
-        for node in common:
-            node.action = NOACTION
-        for node in added:
-            node.action = STARTACTION
-        for node in difference:
-            node.action = STOPACTION
+        for n in common:
+            n.action = NOACTION
+        for n in added:
+            n.action = STARTACTION
+        for n in difference:
+            n.action = STOPACTION
         merged.node = common.union(added).union(difference)
 
     def _merge_composables(self, merged, other):
@@ -273,23 +275,21 @@ class Stack:
         current_nodes = {(n.namespace, n.name): n for n in current_container.nodes}
         other_nodes = {(n.namespace, n.name): n for n in other_container.nodes}
 
-        for key, node in other_nodes.items():
+        for key, n in other_nodes.items():
             if key not in current_nodes:
-                node.action = STARTACTION
+                n.action = STARTACTION
             else:
-                node.action = NOACTION
+                n.action = NOACTION
 
-        for key, node in current_nodes.items():
+        for key, n in current_nodes.items():
             if key not in other_nodes:
-                node.action = STOPACTION
+                n.action = STOPACTION
             else:
-                if node.action != STARTACTION:
-                    node.action = NOACTION
+                if n.action != STARTACTION:
+                    n.action = NOACTION
 
         # Add processed nodes back into their respective containers
-        processed_container = (
-            other_container if other_container in merged.composable else current_container
-        )
+        processed_container = other_container if other_container in merged.composable else current_container
         processed_container.nodes = list(current_nodes.values()) + [
             n for n in other_nodes.values() if n.action == STARTACTION
         ]
@@ -426,10 +426,7 @@ class Stack:
         Returns:
             bool: True if the node should run, False otherwise.
         """
-        active_nodes = [
-            (active[1] if active[1] != "/" else "") + "/" + active[0]
-            for active in launcher._active_nodes
-        ]
+        active_nodes = [(active[1] if active[1] != "/" else "") + "/" + active[0] for active in launcher._active_nodes]
 
         should_node_run = f"{node.namespace}/{node.name}" not in active_nodes
         return should_node_run
@@ -443,11 +440,7 @@ class Stack:
         for cn in container.nodes:
             if cn.action == LOADACTION:
                 logger.debug(f"LOADING {cn.namespace}/{cn.name}")
-                node_desc.append(
-                    ComposableNode(
-                        package=cn.pkg, name=cn.name, namespace=cn.namespace, plugin=cn.plugin
-                    )
-                )
+                node_desc.append(ComposableNode(package=cn.pkg, name=cn.name, namespace=cn.namespace, plugin=cn.plugin))
 
         if node_desc:
             load_action = LoadComposableNodes(
@@ -474,8 +467,7 @@ class Stack:
                     remappings=self.process_remaps(cn.remap),
                 )
                 for cn in c.nodes
-                if cn.action == STARTACTION
-                or (cn.action == NOACTION and self.should_node_run(cn, launcher))
+                if cn.action == STARTACTION or (cn.action == NOACTION and self.should_node_run(cn, launcher))
             ]
 
             if node_desc:  # If node_desc is not empty
@@ -591,21 +583,21 @@ class Stack:
                 else:
                     continue
 
-                result = re.sub(
-                    r"\$\(" + re.escape(expression) + r"\)", resolved_value, result, count=1
-                )
-            except KeyError:
-                raise Exception(f"{var} does not exist", "param")
+                result = re.sub(r"\$\(" + re.escape(expression) + r"\)", resolved_value, result, count=1)
+            except KeyError as exc:
+                raise Exception(f"{var} does not exist", "param") from exc
             except Exception as e:
                 logger.error(f"Exception occurred: {e}")
 
         return result
 
-    def resolve_param_expression(self, param={}):
+    def resolve_param_expression(self, param=None):
+        if param is None:
+            param = {}
         name = ""
         value = None
         valKey = None
-        for k in param.keys():
+        for k in param:
             if k == "name":
                 name = param["name"]
             else:
@@ -615,7 +607,9 @@ class Stack:
             return (name, valKey, self.resolve_expression(value))
         return None
 
-    def resolve_args(self, array=[]):
+    def resolve_args(self, array=None):
+        if array is None:
+            array = []
         result = {}
         self.arg = {}
         for item in array:

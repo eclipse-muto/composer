@@ -65,9 +65,7 @@ class TwinServiceClient:
             elif event.action == "kill":
                 # Kill actions don't need twin manifest handling - just pass through
                 if self.logger:
-                    self.logger.debug(
-                        f"Kill action for {event.stack_name} - no twin manifest handling needed"
-                    )
+                    self.logger.debug(f"Kill action for {event.stack_name} - no twin manifest handling needed")
             else:
                 if self.logger:
                     self.logger.warning(f"Unhandled action in stack request: {event.action}")
@@ -108,8 +106,7 @@ class TwinServiceClient:
                     "validate_dependencies": True,
                     "resolve_expressions": True,
                 },
-                stack_payload=event.stack_payload
-                or {},  # Use direct field instead of nested structure
+                stack_payload=event.stack_payload or {},  # Use direct field instead of nested structure
                 metadata={
                     "desired_manifest": desired_manifest or {},
                     "real_manifest": real_manifest or {},
@@ -153,8 +150,7 @@ class TwinServiceClient:
                     "validate_dependencies": False,
                     "resolve_expressions": False,
                 },
-                stack_payload=event.stack_payload
-                or {},  # Use direct field instead of nested structure
+                stack_payload=event.stack_payload or {},  # Use direct field instead of nested structure
                 metadata={"current_manifest": current_manifest},
             )
 
@@ -310,16 +306,13 @@ class TwinSynchronizer:
                     if stack_payload:
                         self.twin_client.create_desired_stack_manifest(stack_name, stack_payload)
                         if self.logger:
-                            self.logger.info(
-                                f"Created desired manifest during sync for: {stack_name}"
-                            )
+                            self.logger.info(f"Created desired manifest during sync for: {stack_name}")
 
             elif event.action == "decompose":
                 # Verify current state for decompose
                 current_manifest = self.twin_client.get_desired_stack_manifest(stack_name)
-                if not current_manifest:
-                    if self.logger:
-                        self.logger.warning(f"No manifest to decompose for: {stack_name}")
+                if not current_manifest and self.logger:
+                    self.logger.warning(f"No manifest to decompose for: {stack_name}")
 
             # Update sync state
             if event.correlation_id in self.sync_state:

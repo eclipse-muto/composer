@@ -48,9 +48,10 @@ class Param:
         with open(filepath) as file:
             try:
                 yaml_contents = yaml.safe_load(file)
-                # FIXME: Below pattern matches everything. So it will load every parameter in yaml without looking at the relevant node name.
+                # FIXME: Below pattern matches everything. So it will load every parameter
+                # in yaml without looking at the relevant node name.
                 pattern = re.compile(r"/.*?")
-                matching_key = next(key for key in yaml_contents.keys() if pattern.match(key))
+                matching_key = next(key for key in yaml_contents if pattern.match(key))
                 ros_parameters = yaml_contents.get(matching_key, {}).get("ros__parameters", {})
                 return ros_parameters
 

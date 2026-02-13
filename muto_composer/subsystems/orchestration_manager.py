@@ -74,9 +74,7 @@ class ExecutionPathDeterminer:
             analysis_result = analyzed_event.analysis_result
             stack_type = analysis_result.get("stack_type", StackType.UNKNOWN.value)
             action = analyzed_event.action
-            stack_payload = (
-                analyzed_event.stack_payload
-            )  # Use direct field instead of nested lookup
+            stack_payload = analyzed_event.stack_payload  # Use direct field instead of nested lookup
 
             # Handle kill action specially - it just needs to terminate processes
             if action == "kill" or analysis_result.get("is_kill_action"):
@@ -94,13 +92,9 @@ class ExecutionPathDeterminer:
                 )
 
             # Complex logic extracted from original determine_execution_path method
-            is_next_stack_empty = not stack_payload.get("node", "") and not stack_payload.get(
-                "composable", ""
-            )
+            is_next_stack_empty = not stack_payload.get("node", "") and not stack_payload.get("composable", "")
             has_launch_description = bool(stack_payload.get("launch_description_source"))
-            has_on_start_and_on_kill = all(
-                [stack_payload.get("on_start"), stack_payload.get("on_kill")]
-            )
+            has_on_start_and_on_kill = all([stack_payload.get("on_start"), stack_payload.get("on_kill")])
 
             # Determine execution requirements based on stack type and characteristics
             if stack_type == StackType.ARCHIVE.value:
@@ -108,9 +102,7 @@ class ExecutionPathDeterminer:
                 should_run_launch = True
                 requires_merging = False
                 if self.logger:
-                    self.logger.info(
-                        "Archive manifest detected; running ProvisionPlugin and LaunchPlugin"
-                    )
+                    self.logger.info("Archive manifest detected; running ProvisionPlugin and LaunchPlugin")
 
             elif stack_type == StackType.JSON.value:
                 should_run_provision = False
@@ -223,9 +215,7 @@ class DeploymentOrchestrator:
             )
 
             if self.logger:
-                self.logger.info(
-                    f"Starting orchestration {orchestration_id} for {event.metadata.get('action')}"
-                )
+                self.logger.info(f"Starting orchestration {orchestration_id} for {event.metadata.get('action')}")
 
             self.event_bus.publish_sync(orchestration_event)
 
@@ -344,9 +334,7 @@ class DeploymentOrchestrator:
             # Don't trigger rollback if we're already in a rollback
             if self._rollback_in_progress:
                 if self.logger:
-                    self.logger.error(
-                        f"Rollback failed: {event.pipeline_name} - {event.error_details}"
-                    )
+                    self.logger.error(f"Rollback failed: {event.pipeline_name} - {event.error_details}")
                 # Publish rollback failed event
                 rollback_failed = RollbackFailedEvent(
                     event_type=EventType.ROLLBACK_FAILED,
@@ -360,9 +348,7 @@ class DeploymentOrchestrator:
                 return
 
             if self.logger:
-                self.logger.error(
-                    f"Pipeline failed: {event.pipeline_name} at step {event.failure_step}"
-                )
+                self.logger.error(f"Pipeline failed: {event.pipeline_name} at step {event.failure_step}")
 
             # Mark deployment as failed in active state
             self.state_persistence.mark_active_deployment_failed(str(event.error_details))
@@ -401,16 +387,13 @@ class DeploymentOrchestrator:
             # Don't trigger rollback if we're already in a rollback
             if self._rollback_in_progress:
                 if self.logger:
-                    self.logger.error(
-                        f"Process crashed during rollback: {event.process_name} - {event.error_message}"
-                    )
+                    self.logger.error(f"Process crashed during rollback: {event.process_name} - {event.error_message}")
                 self._rollback_in_progress = False
                 return
 
             if self.logger:
                 self.logger.error(
-                    f"Process crashed: {event.process_name} (stack: {event.stack_name}, "
-                    f"exit code: {event.exit_code})"
+                    f"Process crashed: {event.process_name} (stack: {event.stack_name}, exit code: {event.exit_code})"
                 )
 
             # Mark deployment as failed in active state
@@ -436,7 +419,7 @@ class DeploymentOrchestrator:
     def _get_stack_name_from_context(self, event: PipelineFailedEvent) -> str | None:
         """Extract stack name from pipeline failure event context."""
         # Try to find from active orchestrations
-        for orch_id, context in self.active_orchestrations.items():
+        for _orch_id, context in self.active_orchestrations.items():
             if hasattr(context.get("event"), "stack_name"):
                 return context["event"].stack_name
             # Try to get from stack_payload
@@ -448,9 +431,7 @@ class DeploymentOrchestrator:
                     return name
         return None
 
-    def trigger_rollback(
-        self, stack_name: str, previous_stack: dict[str, Any], failure_reason: str
-    ):
+    def trigger_rollback(self, stack_name: str, previous_stack: dict[str, Any], failure_reason: str):
         """Trigger rollback to previous stack version."""
         try:
             if self._rollback_in_progress:

@@ -169,9 +169,7 @@ class StackParser:
             try:
                 stack = self._decode_base64_stack(data_b64)
                 if stack:
-                    self.logger.debug(
-                        f"Extracted stack from solution component '{component.get('name', '')}'"
-                    )
+                    self.logger.debug(f"Extracted stack from solution component '{component.get('name', '')}'")
                     return stack
             except Exception as exc:
                 self.logger.warning(

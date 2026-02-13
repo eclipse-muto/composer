@@ -136,7 +136,7 @@ class TestTwinSynchronizer(unittest.TestCase):
     def test_handle_stack_processed_event(self):
         """Test handling of stack processed events."""
         # Create a stack processed event
-        event = StackProcessedEvent(
+        StackProcessedEvent(
             stack_name="test_stack",
             stack_payload={
                 "nodes": ["node1"],
@@ -158,7 +158,7 @@ class TestTwinSynchronizer(unittest.TestCase):
     def test_handle_deployment_status_event(self):
         """Test handling of deployment status events."""
         # Create a twin update event (simulating deployment status change)
-        event = TwinUpdateEvent(
+        TwinUpdateEvent(
             twin_id="test_twin_001",
             update_type="deployment_status",
             data={"status": "deployed", "stack_name": "test_stack"},

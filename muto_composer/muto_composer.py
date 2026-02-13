@@ -84,19 +84,13 @@ class MutoComposer(Node):
             # Initialize core subsystems
             self.message_handler = MessageHandler(node=self, event_bus=self.event_bus)
 
-            self.digital_twin = DigitalTwinIntegration(
-                node=self, event_bus=self.event_bus, logger=self.get_logger()
-            )
+            self.digital_twin = DigitalTwinIntegration(node=self, event_bus=self.event_bus, logger=self.get_logger())
 
             self.stack_manager = StackManager(event_bus=self.event_bus, logger=self.get_logger())
 
-            self.orchestration_manager = OrchestrationManager(
-                event_bus=self.event_bus, logger=self.get_logger()
-            )
+            self.orchestration_manager = OrchestrationManager(event_bus=self.event_bus, logger=self.get_logger())
 
-            self.pipeline_engine = PipelineEngine(
-                event_bus=self.event_bus, logger=self.get_logger()
-            )
+            self.pipeline_engine = PipelineEngine(event_bus=self.event_bus, logger=self.get_logger())
 
             self.get_logger().info("All subsystems initialized successfully")
 
@@ -210,9 +204,7 @@ class MutoComposer(Node):
     def _handle_pipeline_failed(self, event):
         """Handle pipeline failure for error recovery."""
         try:
-            self.get_logger().error(
-                f"Pipeline failed: {event.pipeline_name} - {event.error_details}"
-            )
+            self.get_logger().error(f"Pipeline failed: {event.pipeline_name} - {event.error_details}")
 
             # Could implement retry logic or error reporting here
 
@@ -290,9 +282,7 @@ class MutoComposer(Node):
 
     def resolve_expression(self, value: str = "") -> str:
         """DEPRECATED: Expression resolution moved to StackProcessor."""
-        self.get_logger().warning(
-            "resolve_expression() method is deprecated - now handled by StackProcessor"
-        )
+        self.get_logger().warning("resolve_expression() method is deprecated - now handled by StackProcessor")
         return value  # Return unchanged for compatibility
 
     def merge(self, current_stack: dict, next_stack: dict) -> dict:
@@ -302,16 +292,12 @@ class MutoComposer(Node):
 
     def load_pipeline_config(self, file_path: str):
         """DEPRECATED: Pipeline configuration loading moved to PipelineEngine."""
-        self.get_logger().warning(
-            "load_pipeline_config() method is deprecated - now handled by PipelineEngine"
-        )
+        self.get_logger().warning("load_pipeline_config() method is deprecated - now handled by PipelineEngine")
         return {"pipelines": []}
 
     def init_pipelines(self, pipeline_config):
         """DEPRECATED: Pipeline initialization moved to PipelineEngine."""
-        self.get_logger().warning(
-            "init_pipelines() method is deprecated - now handled by PipelineEngine"
-        )
+        self.get_logger().warning("init_pipelines() method is deprecated - now handled by PipelineEngine")
 
     # Publisher methods for test compatibility
     def publish_current_stack(self, stack: str):
@@ -328,9 +314,7 @@ class MutoComposer(Node):
 
     def parse_payload(self, payload):
         """DEPRECATED: Payload parsing moved to StackProcessor."""
-        self.get_logger().warning(
-            "parse_payload() method is deprecated - now handled by StackProcessor"
-        )
+        self.get_logger().warning("parse_payload() method is deprecated - now handled by StackProcessor")
         return payload
 
     def extract_stack_from_solution(self, solution):

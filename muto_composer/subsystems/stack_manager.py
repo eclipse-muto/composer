@@ -95,9 +95,7 @@ class StackStateManager:
 
         # Subscribe to events
         self.event_bus.subscribe(EventType.STACK_MERGED, self.handle_stack_merged)
-        self.event_bus.subscribe(
-            EventType.ORCHESTRATION_COMPLETED, self.handle_orchestration_completed
-        )
+        self.event_bus.subscribe(EventType.ORCHESTRATION_COMPLETED, self.handle_orchestration_completed)
         self.event_bus.subscribe(EventType.ORCHESTRATION_FAILED, self.handle_orchestration_failed)
 
         if self.logger:
@@ -186,11 +184,7 @@ class StackStateManager:
     def handle_orchestration_failed(self, event: OrchestrationFailedEvent):
         """Handle orchestration failure and persist state."""
         stack_name = self._current_stack_name or "unknown"
-        error_msg = (
-            getattr(event, "error_details", str(event))
-            if hasattr(event, "error_details")
-            else "Unknown error"
-        )
+        error_msg = getattr(event, "error_details", str(event)) if hasattr(event, "error_details") else "Unknown error"
         self.persistence.mark_deployment_failed(stack_name, error_msg)
         if self.logger:
             self.logger.error(f"Orchestration failed for {stack_name}: {error_msg}")
@@ -248,9 +242,7 @@ class StackAnalyzer:
         # Fallback analysis based on stack structure
         elif stack.get("node") or stack.get("composable"):
             return StackType.RAW
-        elif stack.get("launch_description_source") or (
-            stack.get("on_start") and stack.get("on_kill")
-        ):
+        elif stack.get("launch_description_source") or (stack.get("on_start") and stack.get("on_kill")):
             return StackType.LEGACY
         else:
             return StackType.UNKNOWN
@@ -276,9 +268,7 @@ class StackAnalyzer:
             # Skip full validation for these reference-only payloads
             if event.action == "kill":
                 # stackId can be at top level or inside 'value' key
-                stack_id = stack_payload.get("stackId") or stack_payload.get("value", {}).get(
-                    "stackId"
-                )
+                stack_id = stack_payload.get("stackId") or stack_payload.get("value", {}).get("stackId")
                 if not stack_id:
                     if self.logger:
                         self.logger.error(f"Kill action requires stackId for {event.stack_name}")
@@ -316,9 +306,7 @@ class StackAnalyzer:
             # Validate full stack manifest for start/apply actions
             if not self.stack_parser.validate_stack(stack_payload):
                 if self.logger:
-                    self.logger.error(
-                        f"Stack validation failed for {event.stack_name} - malformed manifest"
-                    )
+                    self.logger.error(f"Stack validation failed for {event.stack_name} - malformed manifest")
                 return
 
             stack_type = self.analyze_stack_type(stack_payload)

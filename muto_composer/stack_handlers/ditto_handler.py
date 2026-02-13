@@ -48,8 +48,7 @@ class DittoStackHandler(StackTypeHandler):
         has_nodes = bool(payload.get("node") or payload.get("composable"))
         has_launch = bool(payload.get("launch"))
         has_legacy_patterns = bool(
-            payload.get("launch_description_source")
-            or (payload.get("on_start") and payload.get("on_kill"))
+            payload.get("launch_description_source") or (payload.get("on_start") and payload.get("on_kill"))
         )
 
         return has_nodes or has_launch or has_legacy_patterns
@@ -68,9 +67,7 @@ class DittoStackHandler(StackTypeHandler):
                 return self._apply_ditto(context)
             else:
                 if self.logger:
-                    self.logger.warning(
-                        f"Unsupported operation for Ditto stack: {context.operation}"
-                    )
+                    self.logger.warning(f"Unsupported operation for Ditto stack: {context.operation}")
                 return False
         except Exception as e:
             if self.logger:

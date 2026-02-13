@@ -32,7 +32,10 @@ setup(
     zip_safe=True,
     maintainer="composiv.ai",
     maintainer_email="info@composiv.ai",
-    description="Eclipse Muto Composer - stack deployment and orchestration engine that manages provisioning, launching, and lifecycle of ROS 2 software stacks",
+    description=(
+        "Eclipse Muto Composer - stack deployment and orchestration engine"
+        " that manages provisioning, launching, and lifecycle of ROS 2 software stacks"
+    ),
     license="Eclipse Public License v2.0",
     python_requires=">=3.10",
     entry_points={

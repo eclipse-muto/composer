@@ -24,7 +24,9 @@ logger = logging.getLogger(__name__)
 
 
 class Node:
-    def __init__(self, stack, manifest={}, container=None):
+    def __init__(self, stack, manifest=None, container=None):
+        if manifest is None:
+            manifest = {}
         if manifest is None:
             manifest = {}
 
@@ -48,14 +50,10 @@ class Node:
         self.unless = manifest.get("unless", "")
         self.action = manifest.get("action", "")
         self.ros_params = [
-            {key: value}
-            for p in self.param
-            if isinstance(p.value, dict)
-            for key, value in p.value.items()
+            {key: value} for p in self.param if isinstance(p.value, dict) for key, value in p.value.items()
         ]
         self.remap_args = [
-            (stack.resolve_expression(rm["from"]), stack.resolve_expression(rm["to"]))
-            for rm in self.remap
+            (stack.resolve_expression(rm["from"]), stack.resolve_expression(rm["to"])) for rm in self.remap
         ]
 
     def toManifest(self):
@@ -79,16 +77,14 @@ class Node:
             "action": self.action,
         }
 
-    def change_state(self, verbs=[]):
+    def change_state(self, verbs=None):
+        if verbs is None:
+            verbs = []
         if self.lifecycle:
             temporary_node = rclpy.create_node("change_state_node")
-            state_cli = temporary_node.create_client(
-                ChangeState, f"/{self.namespace}/{self.name}/change_state"
-            )
+            state_cli = temporary_node.create_client(ChangeState, f"/{self.namespace}/{self.name}/change_state")
             while not state_cli.wait_for_service(timeout_sec=1.0):
-                temporary_node.get_logger().warn(
-                    "Lifecycle change state service not available. Waiting..."
-                )
+                temporary_node.get_logger().warn("Lifecycle change state service not available. Waiting...")
 
             for verb in verbs:
                 request = ChangeState.Request()
@@ -104,13 +100,9 @@ class Node:
     def get_state(self):
         if self.lifecycle:
             temporary_node = rclpy.create_node("get_state_node")
-            state_cli = temporary_node.create_client(
-                GetState, f"/{self.namespace}/{self.name}/get_state"
-            )
+            state_cli = temporary_node.create_client(GetState, f"/{self.namespace}/{self.name}/get_state")
             while not state_cli.wait_for_service(timeout_sec=1.0):
-                temporary_node.get_logger().warn(
-                    "Lifecycle get state service not available. Waiting..."
-                )
+                temporary_node.get_logger().warn("Lifecycle get state service not available. Waiting...")
             request = GetState.Request()
             future = state_cli.call_async(request)
             rclpy.spin_until_future_complete(temporary_node, future, timeout_sec=3.0)
@@ -126,9 +118,7 @@ class Node:
                 GetAvailableStates, f"/{self.namespace}/{self.name}/get_available_states"
             )
             while not state_cli.wait_for_service(timeout_sec=1.0):
-                temporary_node.get_logger().warn(
-                    "Lifecycle get_available_states service not available. Waiting..."
-                )
+                temporary_node.get_logger().warn("Lifecycle get_available_states service not available. Waiting...")
             request = GetAvailableStates.Request()
             response = GetAvailableStates.Response()
             future = state_cli.call_async(request)

@@ -154,16 +154,11 @@ class ComposerWatchdog(Node):
         service_names_and_types = self.get_service_names_and_types()
         full_service_name = f"/{service_name}" if not service_name.startswith("/") else service_name
 
-        for svc_name, _ in service_names_and_types:
-            if svc_name == full_service_name:
-                return True
-        return False
+        return any(svc_name == full_service_name for svc_name, _ in service_names_and_types)
 
     def _perform_health_check(self) -> SystemHealthReport:
         """Perform health check on all monitored subsystems."""
-        report = SystemHealthReport(
-            timestamp=time.time(), uptime_seconds=time.time() - self.start_time
-        )
+        report = SystemHealthReport(timestamp=time.time(), uptime_seconds=time.time() - self.start_time)
 
         healthy_count = 0
         degraded_count = 0
@@ -221,19 +216,13 @@ class ComposerWatchdog(Node):
             self._health_pub.publish(msg)
 
             # Log summary
-            status_summary = ", ".join(
-                f"{name}={sub.status.name}" for name, sub in report.subsystems.items()
-            )
-            self.get_logger().info(
-                f"Health check complete: {report.overall_status.name} [{status_summary}]"
-            )
+            status_summary = ", ".join(f"{name}={sub.status.name}" for name, sub in report.subsystems.items())
+            self.get_logger().info(f"Health check complete: {report.overall_status.name} [{status_summary}]")
 
         except Exception as e:
             self.get_logger().error(f"Error during health check: {e}")
 
-    def _handle_health_check(
-        self, request: Trigger.Request, response: Trigger.Response
-    ) -> Trigger.Response:
+    def _handle_health_check(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
         """Handle on-demand health check service requests."""
         try:
             report = self._perform_health_check()

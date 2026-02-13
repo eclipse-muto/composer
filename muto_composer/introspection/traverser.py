@@ -31,10 +31,10 @@ RED = "\033[91m"
 
 def resolve_substitutions(context, value):
     # If the value is a list or tuple of substitutions, we attempt to perform them
-    if isinstance(value, list) or isinstance(value, tuple):
+    if isinstance(value, (list, tuple)):
         try:
             return "".join(perform_substitutions(context, value))
-        except:
+        except Exception:
             return str(value)
     # If it's not a list/tuple, just convert to string
     return str(value)
@@ -44,31 +44,25 @@ def recursively_extract_entities(entities, context, nodes, composable_nodes, con
     for entity in entities:
         try:
             if isinstance(entity, IncludeLaunchDescription):
-                included_ld = entity.launch_description_source.get_launch_description(
-                    context=context
-                )
+                included_ld = entity.launch_description_source.get_launch_description(context=context)
                 included_ld.visit(context)  # Expand includes, substitutions, etc.
-                recursively_extract_entities(
-                    included_ld.entities, context, nodes, composable_nodes, containers
-                )
+                recursively_extract_entities(included_ld.entities, context, nodes, composable_nodes, containers)
             elif isinstance(entity, GroupAction):
                 sub_entities = entity.get_sub_entities()
-                recursively_extract_entities(
-                    sub_entities, context, nodes, composable_nodes, containers
-                )
+                recursively_extract_entities(sub_entities, context, nodes, composable_nodes, containers)
             else:
                 if not already_found(entity, nodes, composable_nodes, containers):
                     if isinstance(entity, Node):
-                        resolved_executable = resolve_substitutions(
-                            context, entity._Node__node_executable
-                        )
+                        resolved_executable = resolve_substitutions(context, entity._Node__node_executable)
                         resolved_name = resolve_substitutions(context, entity._Node__node_name)
-                        resolved_namespace = resolve_substitutions(
-                            context, entity._Node__node_namespace
-                        )
+                        resolved_namespace = resolve_substitutions(context, entity._Node__node_namespace)
                         resolved_package = resolve_substitutions(context, entity._Node__package)
+                        ns = resolved_namespace or entity._Node__namespace
+                        nm = resolved_name or entity._Node__name
                         print(
-                            f"Found Node: {GREEN}{resolved_executable} {RESET} with the full name: {BLUE}{resolved_namespace or entity._Node__namespace}/{resolved_name or entity._Node__name} {RESET} within package{YELLOW}: {resolved_package}"
+                            f"Found Node: {GREEN}{resolved_executable} {RESET} "
+                            f"with the full name: {BLUE}{ns}/{nm} {RESET} "
+                            f"within package{YELLOW}: {resolved_package}"
                         )
                         nodes.append(entity)
                     elif isinstance(entity, ComposableNode):
@@ -81,9 +75,7 @@ def recursively_extract_entities(entities, context, nodes, composable_nodes, con
                 if hasattr(entity, "describe_sub_entities"):
                     sub_entities = entity.describe_sub_entities()
                     if sub_entities:
-                        recursively_extract_entities(
-                            sub_entities, context, nodes, composable_nodes, containers
-                        )
+                        recursively_extract_entities(sub_entities, context, nodes, composable_nodes, containers)
         except LookupError:
             resolved_package = resolve_substitutions(context, entity._Node__package)
             print(f"{RED}package could not be found: {resolved_package}{RESET}")
@@ -99,9 +91,8 @@ def already_found(entity, nodes, composable_nodes, containers):
     elif isinstance(entity, ComposableNode):
         if entity in composable_nodes:
             return True
-    elif isinstance(entity, ComposableNodeContainer):
-        if entity in containers:
-            return True
+    elif isinstance(entity, ComposableNodeContainer) and entity in containers:
+        return True
     return False
 
 

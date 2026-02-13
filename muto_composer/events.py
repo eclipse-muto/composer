@@ -551,9 +551,7 @@ class PipelineEvents:
         )
 
     @staticmethod
-    def create_completion_event(
-        pipeline_name: str, success: bool = True, result: dict[str, Any] | None = None
-    ):
+    def create_completion_event(pipeline_name: str, success: bool = True, result: dict[str, Any] | None = None):
         """Create a pipeline completion event."""
         return PipelineCompletedEvent(
             event_type=EventType.PIPELINE_COMPLETE,
@@ -623,8 +621,7 @@ class EventBus:
             # Execute handlers concurrently
             if handlers:
                 tasks = [
-                    asyncio.get_event_loop().run_in_executor(self._executor, handler, event)
-                    for handler in handlers
+                    asyncio.get_event_loop().run_in_executor(self._executor, handler, event) for handler in handlers
                 ]
                 await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -638,9 +635,7 @@ class EventBus:
             handlers = self._handlers.get(event.event_type, [])
 
             if self._logger:
-                self._logger.debug(
-                    f"Publishing {event.event_type.value} to {len(handlers)} handlers"
-                )
+                self._logger.debug(f"Publishing {event.event_type.value} to {len(handlers)} handlers")
 
             for handler in handlers:
                 try:

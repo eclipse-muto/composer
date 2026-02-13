@@ -280,9 +280,7 @@ class StatePersistence:
         state.error_message = ""
 
         if self.logger:
-            self.logger.info(
-                f"Deployment completed for {stack_name}: version {state.current_version}"
-            )
+            self.logger.info(f"Deployment completed for {stack_name}: version {state.current_version}")
 
         return self.save_state(stack_name, state)
 
@@ -339,9 +337,7 @@ class StatePersistence:
         state.rollback_count += 1
 
         if self.logger:
-            self.logger.info(
-                f"Rollback completed for {stack_name}: restored version {state.current_version}"
-            )
+            self.logger.info(f"Rollback completed for {stack_name}: restored version {state.current_version}")
 
         return self.save_state(stack_name, state)
 
@@ -414,9 +410,7 @@ class StatePersistence:
                 data = json.load(f)
             state = StackState.from_dict(data)
             if self.logger:
-                self.logger.debug(
-                    f"Loaded active state: {state.stack_name}, status: {state.status}"
-                )
+                self.logger.debug(f"Loaded active state: {state.stack_name}, status: {state.status}")
             return state
         except (OSError, json.JSONDecodeError) as e:
             if self.logger:
@@ -489,8 +483,7 @@ class StatePersistence:
 
         if self.logger:
             self.logger.info(
-                f"Active deployment started: {stack_name} v{state.current_version}, "
-                f"previous: {state.previous_version}"
+                f"Active deployment started: {stack_name} v{state.current_version}, previous: {state.previous_version}"
             )
 
         return self.save_active_state(state)
@@ -519,9 +512,7 @@ class StatePersistence:
         state.error_message = ""
 
         if self.logger:
-            self.logger.info(
-                f"Active deployment completed: {state.stack_name} v{state.current_version}"
-            )
+            self.logger.info(f"Active deployment completed: {state.stack_name} v{state.current_version}")
 
         return self.save_active_state(state)
 
@@ -610,8 +601,6 @@ class StatePersistence:
         state.rollback_count += 1
 
         if self.logger:
-            self.logger.info(
-                f"Active rollback completed: restored {state.stack_name} v{state.current_version}"
-            )
+            self.logger.info(f"Active rollback completed: restored {state.stack_name} v{state.current_version}")
 
         return self.save_active_state(state)

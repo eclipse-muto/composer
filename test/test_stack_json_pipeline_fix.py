@@ -135,7 +135,7 @@ class TestStackJsonPipelineFix(unittest.TestCase):
         req.input.current = stack_msg
         req.start = True
 
-        Editfuture = launch_client.call_async(req)
+        launch_client.call_async(req)
         # rclpy.spin_until_future_complete(self.node, future)
 
         self.assertIsNotNone(future.result())

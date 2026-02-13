@@ -44,7 +44,7 @@ class SafeEvaluator:
             expr_ast = ast.parse(expr, mode="eval").body
             return self._eval(expr_ast)
         except Exception as e:
-            raise ValueError(f"Invalid condition expression '{expr}': {e}")
+            raise ValueError(f"Invalid condition expression '{expr}': {e}") from e
 
     def _eval(self, node):
         if isinstance(node, ast.BoolOp):
@@ -57,7 +57,7 @@ class SafeEvaluator:
                 return not self._eval(node.operand)
         elif isinstance(node, ast.Compare):
             left = self._eval(node.left)
-            for op_, right in zip(node.ops, node.comparators):
+            for op_, right in zip(node.ops, node.comparators, strict=False):
                 right_val = self._eval(right)
                 oper = self.operators[type(op_)]
                 if not oper(left, right_val):

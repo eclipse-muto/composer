@@ -46,9 +46,7 @@ class PipelineManager:
 
         # Set default config path if not provided
         if not config_path:
-            config_path = os.path.join(
-                get_package_share_directory("muto_composer"), "config", "pipeline.yaml"
-            )
+            config_path = os.path.join(get_package_share_directory("muto_composer"), "config", "pipeline.yaml")
 
         self.config_path = config_path
         self._load_and_initialize_pipelines()
@@ -86,7 +84,7 @@ class PipelineManager:
         except ValidationError as e:
             if self.logger:
                 self.logger.error(f"Invalid pipeline configuration: {e}")
-            raise ValueError(f"Invalid pipeline configuration: {e}")
+            raise ValueError(f"Invalid pipeline configuration: {e}") from e
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Error loading pipeline configuration: {e}")
@@ -168,11 +166,10 @@ class PipelineExecutor:
             requires_merging = event.metadata.get("requires_merging", False)
             stack_payload = event.stack_payload  # Use direct field instead of metadata
 
-            if requires_merging:
+            if requires_merging and self.logger:
                 # For now, we'll proceed directly to pipeline execution
                 # In a full implementation, this would wait for stack merging to complete
-                if self.logger:
-                    self.logger.info("Stack merging required, proceeding with pipeline execution")
+                self.logger.info("Stack merging required, proceeding with pipeline execution")
 
             pipeline_event = PipelineRequestedEvent(
                 event_type=EventType.PIPELINE_REQUESTED,
@@ -228,9 +225,7 @@ class PipelineExecutor:
             )
 
             if self.logger:
-                self.logger.info(
-                    f"Starting pipeline execution: {event.pipeline_name} [{execution_id}]"
-                )
+                self.logger.info(f"Starting pipeline execution: {event.pipeline_name} [{execution_id}]")
 
             # Execute pipeline
             result = self._execute_pipeline_real(pipeline, event)
@@ -252,9 +247,7 @@ class PipelineExecutor:
                 )
 
                 if self.logger:
-                    self.logger.info(
-                        f"Pipeline execution completed: {event.pipeline_name} [{execution_id}]"
-                    )
+                    self.logger.info(f"Pipeline execution completed: {event.pipeline_name} [{execution_id}]")
             else:
                 # Pipeline failed, publish failure event
                 self._publish_pipeline_failed(
@@ -264,9 +257,7 @@ class PipelineExecutor:
                     result.get("error", "Pipeline execution failed"),
                 )
                 if self.logger:
-                    self.logger.error(
-                        f"Pipeline execution failed: {event.pipeline_name} [{execution_id}]"
-                    )
+                    self.logger.error(f"Pipeline execution failed: {event.pipeline_name} [{execution_id}]")
 
             # Clean up
             if execution_id in self.active_executions:
@@ -279,18 +270,14 @@ class PipelineExecutor:
             if execution_id in self.active_executions:
                 del self.active_executions[execution_id]
 
-    def _execute_pipeline_real(
-        self, pipeline: Pipeline, event: PipelineRequestedEvent
-    ) -> dict[str, Any]:
+    def _execute_pipeline_real(self, pipeline: Pipeline, event: PipelineRequestedEvent) -> dict[str, Any]:
         """Execute pipeline for real."""
         try:
             if self.logger:
                 self.logger.info(f"Executing pipeline: {pipeline.name}")
 
             # Execute the actual pipeline
-            pipeline.execute_pipeline(
-                additional_context=event.execution_context, next_manifest=event.stack_manifest
-            )
+            pipeline.execute_pipeline(additional_context=event.execution_context, next_manifest=event.stack_manifest)
 
             # Return pipeline context as result
             return {
@@ -347,9 +334,7 @@ class PipelineExecutor:
         )
 
         if self.logger:
-            self.logger.error(
-                f"Pipeline execution failed: {event.pipeline_name} [{execution_id}] - {error_message}"
-            )
+            self.logger.error(f"Pipeline execution failed: {event.pipeline_name} [{execution_id}] - {error_message}")
 
 
 class PipelineEngine:
@@ -385,9 +370,7 @@ class PipelineEngine:
             pipeline = self.manager.get_pipeline(pipeline_name)
             if pipeline:
                 if self.logger:
-                    self.logger.info(
-                        f"Executing pipeline: {pipeline_name} with context: {additional_context}"
-                    )
+                    self.logger.info(f"Executing pipeline: {pipeline_name} with context: {additional_context}")
 
                 # Create synthetic pipeline request event
                 pipeline_event = PipelineRequestedEvent(

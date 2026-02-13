@@ -169,9 +169,7 @@ class ArchiveStackHandler(StackTypeHandler):
             if os.path.isdir(resolved_subdir):
                 self._move_contents(resolved_subdir, workspace_dir)
             else:
-                self.logger.warning(
-                    f"Artifact subdirectory '{subdir}' not found; continuing without flattening."
-                )
+                self.logger.warning(f"Artifact subdirectory '{subdir}' not found; continuing without flattening.")
         elif props.get("flatten", True):
             self._flatten_single_directory(workspace_dir)
 
@@ -204,9 +202,7 @@ class ArchiveStackHandler(StackTypeHandler):
             shutil.rmtree(workspace_dir, ignore_errors=True)
         os.makedirs(workspace_dir, exist_ok=True)
 
-    def _prepare_archive(
-        self, manifest: dict[str, Any], temp_dir: str
-    ) -> tuple[str, dict[str, Any]]:
+    def _prepare_archive(self, manifest: dict[str, Any], temp_dir: str) -> tuple[str, dict[str, Any]]:
         artifact = manifest.get("launch", {})
         data_b64 = artifact.get("data")
         url = artifact.get("url")
@@ -264,10 +260,7 @@ class ArchiveStackHandler(StackTypeHandler):
                     try:
                         response.raise_for_status()
                     except requests.HTTPError:
-                        if (
-                            response.status_code == 404
-                            and headers.get("Accept") == "application/octet-stream"
-                        ):
+                        if response.status_code == 404 and headers.get("Accept") == "application/octet-stream":
                             self.logger.warning(
                                 "404 when requesting archive with Accept=application/octet-stream; retrying with '*/*'."
                             )
@@ -295,7 +288,7 @@ class ArchiveStackHandler(StackTypeHandler):
                             if chunk:
                                 file_handle.write(chunk)
             except requests.RequestException as exc:
-                raise RuntimeError(f"Failed to download artifact from {url}: {exc}")
+                raise RuntimeError(f"Failed to download artifact from {url}: {exc}") from exc
         elif parsed.scheme in ("", "file"):
             source_path = url[7:] if parsed.scheme == "file" else url
             shutil.copy(source_path, archive_path)
@@ -326,13 +319,11 @@ class ArchiveStackHandler(StackTypeHandler):
                 for chunk in iter(lambda: file_handle.read(8192), b""):
                     digest.update(chunk)
         except OSError as exc:
-            raise RuntimeError(f"Failed to read archive for checksum verification: {exc}")
+            raise RuntimeError(f"Failed to read archive for checksum verification: {exc}") from exc
 
         actual = digest.hexdigest()
         if actual.lower() != expected.lower():
-            raise ValueError(
-                f"Checksum mismatch for {file_path}: expected {expected}, got {actual}"
-            )
+            raise ValueError(f"Checksum mismatch for {file_path}: expected {expected}, got {actual}")
 
     def _extract_archive(self, archive_path: str, destination: str) -> None:
         if tarfile.is_tarfile(archive_path):
@@ -499,9 +490,7 @@ class ArchiveStackHandler(StackTypeHandler):
 
                     if local_commit != remote_commit:
                         all_submodules_up_to_date = False
-                        self.logger.info(
-                            f"Submodule '{submodule}' is not up-to-date. Pulling changes."
-                        )
+                        self.logger.info(f"Submodule '{submodule}' is not up-to-date. Pulling changes.")
                         subprocess.run(
                             ["git", "pull"],
                             check=True,

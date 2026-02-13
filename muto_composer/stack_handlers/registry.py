@@ -25,11 +25,7 @@ class StackTypeRegistry:
         if node:
             node.declare_parameter("ignored_packages", [""])
             self.ignored_packages = [
-                pkg
-                for pkg in node.get_parameter("ignored_packages")
-                .get_parameter_value()
-                .string_array_value
-                if pkg
+                pkg for pkg in node.get_parameter("ignored_packages").get_parameter_value().string_array_value if pkg
             ]
         self.logger = logger
 

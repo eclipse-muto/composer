@@ -11,6 +11,7 @@
 #   Composiv.ai - initial API and implementation
 #
 
+import contextlib
 import unittest
 from unittest.mock import MagicMock
 
@@ -118,10 +119,8 @@ class TestMessageRouter(unittest.TestCase):
 class TestMessageHandler(unittest.TestCase):
     def setUp(self):
         # Initialize ROS if not already done
-        try:
+        with contextlib.suppress(BaseException):
             rclpy.init()
-        except:
-            pass
 
         # Create a mock node
         self.mock_node = MagicMock()
@@ -136,10 +135,8 @@ class TestMessageHandler(unittest.TestCase):
         self.message_handler = MessageHandler(self.mock_node, self.event_bus, self.logger)
 
     def tearDown(self):
-        try:
+        with contextlib.suppress(BaseException):
             rclpy.shutdown()
-        except:
-            pass
 
     def test_initialization(self):
         """Test MessageHandler initialization."""

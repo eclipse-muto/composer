@@ -60,9 +60,7 @@ class BasePlugin(Node):
         from muto_composer.stack_handlers.registry import StackTypeRegistry
 
         Node.__init__(self, node_name)
-        self._stack_definition_client = self.create_client(
-            CoreTwin, "/muto/core_twin/get_stack_definition"
-        )
+        self._stack_definition_client = self.create_client(CoreTwin, "/muto/core_twin/get_stack_definition")
         self.stack_registry = StackTypeRegistry(self, self.get_logger())
         self.stack_registry.discover_and_register_handlers()
         self.stack_parser = StackParser(self.get_logger())
@@ -71,7 +69,8 @@ class BasePlugin(Node):
 
     def _get_stack_name(self, stack_dict):
         """
-        Get the stack name from a stack dictionary, checking metadata.name first, then name, then defaulting to 'default'.
+        Get the stack name from a stack dictionary, checking metadata.name first,
+        then name, then defaulting to 'default'.
 
         Args:
             stack_dict (dict): The stack dictionary
@@ -188,17 +187,13 @@ class BasePlugin(Node):
 
             completed = result_holder["event"].wait(timeout=5.0)
             if not completed:
-                self.get_logger().warning(
-                    f"Timeout reached while waiting for stack manifest: {stack_id}"
-                )
+                self.get_logger().warning(f"Timeout reached while waiting for stack manifest: {stack_id}")
                 return None
 
             return result_holder["manifest"]
 
         except Exception as exc:
-            self.get_logger().error(
-                f"Error fetching stack manifest for stackId '{stack_id}': {exc}"
-            )
+            self.get_logger().error(f"Error fetching stack manifest for stackId '{stack_id}': {exc}")
 
         return None
 
@@ -209,22 +204,16 @@ class BasePlugin(Node):
         try:
             result = future.result()
             if not result or not getattr(result, "output", None):
-                self.get_logger().warning(
-                    f"CoreTwin returned an empty manifest for stackId '{stack_id}'."
-                )
+                self.get_logger().warning(f"CoreTwin returned an empty manifest for stackId '{stack_id}'.")
                 holder["manifest"] = None
             else:
                 try:
                     holder["manifest"] = json.loads(result.output)
                 except json.JSONDecodeError as json_err:
-                    self.get_logger().error(
-                        f"Failed to decode manifest for stackId '{stack_id}': {json_err}"
-                    )
+                    self.get_logger().error(f"Failed to decode manifest for stackId '{stack_id}': {json_err}")
                     holder["manifest"] = None
         except Exception as exc:
-            self.get_logger().error(
-                f"Error processing manifest response for stackId '{stack_id}': {exc}"
-            )
+            self.get_logger().error(f"Error processing manifest response for stackId '{stack_id}': {exc}")
             holder["manifest"] = None
         finally:
             holder["event"].set()
@@ -254,10 +243,7 @@ class BasePlugin(Node):
             return None
 
         try:
-            if isinstance(stack_string, dict):
-                parsed = stack_string
-            else:
-                parsed = json.loads(stack_string)
+            parsed = stack_string if isinstance(stack_string, dict) else json.loads(stack_string)
 
             if not isinstance(parsed, dict):
                 self.get_logger().warning(f"Stack string parsed to non-dict type: {type(parsed)}")
@@ -300,9 +286,7 @@ class BasePlugin(Node):
             True if valid, False otherwise
         """
         if not self.stack_parser.validate_stack(stack):
-            self.get_logger().warning(
-                "Stack manifest failed basic validation - missing required structure"
-            )
+            self.get_logger().warning("Stack manifest failed basic validation - missing required structure")
             return False
 
         # Additional validation: check for content_type consistency if metadata present
@@ -313,16 +297,11 @@ class BasePlugin(Node):
             # Validate that the content matches declared type
             if content_type == "stack/archive":
                 if not stack.get("launch"):
-                    self.get_logger().warning(
-                        "Stack declares stack/archive but missing launch section"
-                    )
+                    self.get_logger().warning("Stack declares stack/archive but missing launch section")
                     return False
-            elif content_type == "stack/json":
-                if not stack.get("launch"):
-                    self.get_logger().warning(
-                        "Stack declares stack/json but missing launch section"
-                    )
-                    return False
+            elif content_type == "stack/json" and not stack.get("launch"):
+                self.get_logger().warning("Stack declares stack/json but missing launch section")
+                return False
 
         return True
 

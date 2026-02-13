@@ -65,26 +65,24 @@ class Pipeline:
                     try:
                         plugin_class = getattr(module, plugin_name)
                         plugin_dict[plugin_name] = plugin_class
-                    except AttributeError:
+                    except AttributeError as exc:
                         self.logger.error(f"Plugin '{plugin_name}' not found in '{module_name}'")
                         raise Exception(
                             f"Plugin '{plugin_name}' not found in module '{module_name}'. "
                             "Ensure the plugin has a corresponding service definition."
-                        )
+                        ) from exc
         for step in self.compensation:
             plugin_name = step.get("plugin")
             if plugin_name and plugin_name not in plugin_dict:
                 try:
                     plugin_class = getattr(module, plugin_name)
                     plugin_dict[plugin_name] = plugin_class
-                except AttributeError:
-                    self.logger.error(
-                        f"Compensation Plugin '{plugin_name}' not found in '{module_name}'"
-                    )
+                except AttributeError as exc:
+                    self.logger.error(f"Compensation Plugin '{plugin_name}' not found in '{module_name}'")
                     raise Exception(
                         f"Compensation Plugin '{plugin_name}' not found in module '{module_name}'. "
                         "Ensure the plugin has a corresponding service definition."
-                    )
+                    ) from exc
         return plugin_dict
 
     def execute_pipeline(self, additional_context: dict = None, next_manifest=None):
@@ -120,19 +118,13 @@ class Pipeline:
                             f"Evaluating condition for step '{step_name}': {condition} => {should_execute}"
                         )
                         if not should_execute:
-                            self.logger.info(
-                                f"Skipping step '{step_name}' due to condition: {condition}"
-                            )
+                            self.logger.info(f"Skipping step '{step_name}' due to condition: {condition}")
                             continue
                     except ValueError as e:
-                        self.logger.error(
-                            f"Condition evaluation failed for step '{step_name}': {e}"
-                        )
+                        self.logger.error(f"Condition evaluation failed for step '{step_name}': {e}")
                         self.execute_compensation(executor)
                         failed = True
-                        self.logger.error(
-                            "Aborting the rest of the pipeline due to condition evaluation failure."
-                        )
+                        self.logger.error("Aborting the rest of the pipeline due to condition evaluation failure.")
                         break
 
                 try:
@@ -219,9 +211,7 @@ class Pipeline:
                 try:
                     self.execute_step(step, executor)
                 except Exception as e:
-                    self.logger.warn(
-                        f"Compensation step failed: {step.get('plugin', '')}, Exception: {e}"
-                    )
+                    self.logger.warn(f"Compensation step failed: {step.get('plugin', '')}, Exception: {e}")
         else:
             self.logger.warn("No compensation steps to execute.")
 

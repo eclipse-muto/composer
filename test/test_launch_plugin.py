@@ -162,11 +162,10 @@ class TestLaunchPlugin(unittest.TestCase):
         mock_current = MagicMock()
         mock_current.source = json.dumps({"workspace_name": "/mock/file"})
         # Mock the _get_stack_name method
-        with patch.object(self.node, "_get_stack_name", return_value="Test Stack"):
-            with patch(
-                "muto_composer.plugins.launch_plugin.WORKSPACES_PATH", "/tmp/muto/muto_workspaces"
-            ):
-                self.node.source_workspaces(mock_current)
+        with patch.object(self.node, "_get_stack_name", return_value="Test Stack"), patch(
+            "muto_composer.plugins.launch_plugin.WORKSPACES_PATH", "/tmp/muto/muto_workspaces"
+        ):
+            self.node.source_workspaces(mock_current)
 
         self.node.get_logger().info.assert_called_with("Sourced workspace: workspace_name")
         mock_environ_update.assert_called_once_with({})

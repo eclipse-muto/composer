@@ -14,6 +14,7 @@
 
 import asyncio
 import concurrent.futures
+import contextlib
 import multiprocessing
 import os
 import signal
@@ -58,9 +59,7 @@ class Ros2LaunchParent:
         for argument in launch_arguments:
             count = argument.count(":=")
             if count == 0 or argument.startswith(":=") or (count == 1 and argument.endswith(":=")):
-                raise RuntimeError(
-                    f"malformed launch argument '{argument}', expected format '<name>:=<value>'"
-                )
+                raise RuntimeError(f"malformed launch argument '{argument}', expected format '<name>:=<value>'")
             name, value = argument.split(":=", maxsplit=1)
             # If the same argument name appears multiple times, last one wins
             parsed_launch_arguments[name] = value
@@ -89,18 +88,14 @@ class Ros2LaunchParent:
         launch_description.add_action(
             RegisterEventHandler(
                 OnProcessStart(
-                    on_start=lambda event, context: self._event_handler(
-                        "start", event, self._active_nodes, self._lock
-                    )
+                    on_start=lambda event, context: self._event_handler("start", event, self._active_nodes, self._lock)
                 )
             )
         )
         launch_description.add_action(
             RegisterEventHandler(
                 OnProcessExit(
-                    on_exit=lambda event, context: self._event_handler(
-                        "exit", event, self._active_nodes, self._lock
-                    )
+                    on_exit=lambda event, context: self._event_handler("exit", event, self._active_nodes, self._lock)
                 )
             )
         )
@@ -112,11 +107,9 @@ class Ros2LaunchParent:
         # In unit tests, asyncio.new_event_loop may be patched to a mock.
         # If so, avoid creating/awaiting real coroutines to prevent warnings.
         if is_mock_loop:
-            try:
+            with contextlib.suppress(Exception):
                 # Close the coroutine to prevent "never awaited" warnings
                 run_coro.close()
-            except Exception:
-                pass
             return
 
         launch_task = loop.create_task(run_coro)
@@ -158,9 +151,7 @@ class Ros2LaunchParent:
             f"Launching file: {launch_file_path} with arguments: {launch_file_arguments}"
         )
 
-        launch_service = launch.LaunchService(
-            argv=launch_file_arguments, noninteractive=noninteractive, debug=debug
-        )
+        launch_service = launch.LaunchService(argv=launch_file_arguments, noninteractive=noninteractive, debug=debug)
 
         parsed_launch_arguments = self.parse_launch_arguments(launch_file_arguments)
 
@@ -176,18 +167,14 @@ class Ros2LaunchParent:
         launch_description.add_action(
             RegisterEventHandler(
                 OnProcessStart(
-                    on_start=lambda event, context: self._event_handler(
-                        "start", event, self._active_nodes, self._lock
-                    )
+                    on_start=lambda event, context: self._event_handler("start", event, self._active_nodes, self._lock)
                 )
             )
         )
         launch_description.add_action(
             RegisterEventHandler(
                 OnProcessExit(
-                    on_exit=lambda event, context: self._event_handler(
-                        "exit", event, self._active_nodes, self._lock
-                    )
+                    on_exit=lambda event, context: self._event_handler("exit", event, self._active_nodes, self._lock)
                 )
             )
         )
@@ -226,26 +213,20 @@ class Ros2LaunchParent:
             f"Launching LaunchDescription with arguments: {launch_file_arguments}"
         )
 
-        launch_service = launch.LaunchService(
-            argv=launch_file_arguments, noninteractive=noninteractive, debug=debug
-        )
+        launch_service = launch.LaunchService(argv=launch_file_arguments, noninteractive=noninteractive, debug=debug)
 
         # Register the same event handlers so we can track node processes
         launch_description.add_action(
             RegisterEventHandler(
                 OnProcessStart(
-                    on_start=lambda event, context: self._event_handler(
-                        "start", event, self._active_nodes, self._lock
-                    )
+                    on_start=lambda event, context: self._event_handler("start", event, self._active_nodes, self._lock)
                 )
             )
         )
         launch_description.add_action(
             RegisterEventHandler(
                 OnProcessExit(
-                    on_exit=lambda event, context: self._event_handler(
-                        "exit", event, self._active_nodes, self._lock
-                    )
+                    on_exit=lambda event, context: self._event_handler("exit", event, self._active_nodes, self._lock)
                 )
             )
         )
@@ -386,13 +367,9 @@ class Ros2LaunchParent:
                 rclpy.logging.get_logger("muto_launch_parent").info(
                     f"Node exited: {event.process_name} with PID {event.pid}"
                 )
-                nodes_list[:] = [
-                    node for node in nodes_list if node.get(event.process_name) != event.pid
-                ]
+                nodes_list[:] = [node for node in nodes_list if node.get(event.process_name) != event.pid]
 
-        rclpy.logging.get_logger("muto_launch_parent").info(
-            f"Active nodes after {action}: {nodes_list}"
-        )
+        rclpy.logging.get_logger("muto_launch_parent").info(f"Active nodes after {action}: {nodes_list}")
         if not nodes_list and action == "exit":
             self.shutdown()
 
@@ -411,7 +388,7 @@ class Ros2LaunchParent:
           }
         """
         ld = launch.LaunchDescription()
-        for key, node_info in added_nodes.items():
+        for _key, node_info in added_nodes.items():
             node_name = node_info.get("name", "unnamed_node")
             node_ns = node_info.get("namespace", "/")
             pkg = node_info.get("package", "")
@@ -431,9 +408,7 @@ class Ros2LaunchParent:
 
         return ld
 
-    def apply_delta(
-        self, diff_result: Difference, extra_args: list[str], async_loop: asyncio.AbstractEventLoop
-    ):
+    def apply_delta(self, diff_result: Difference, extra_args: list[str], async_loop: asyncio.AbstractEventLoop):
         """
         Orchestrates:
           - Launching all 'added' nodes
@@ -451,22 +426,18 @@ class Ros2LaunchParent:
             ld = self.create_launch_description_for_added_nodes(diff_result.added_nodes)
 
             async def _launch():
-                await self.launch_a_launch_description(
-                    ld, launch_file_arguments=extra_args, noninteractive=True
-                )
+                await self.launch_a_launch_description(ld, launch_file_arguments=extra_args, noninteractive=True)
 
             asyncio.run_coroutine_threadsafe(_launch(), async_loop)
 
         # 2) Kill 'removed' nodes
         if diff_result.removed_nodes:
             removed_names = []
-            for key, node_info in diff_result.removed_nodes.items():
+            for _key, node_info in diff_result.removed_nodes.items():
                 removed_names.append(node_info["name"])
 
             if removed_names:
-                rclpy.logging.get_logger("muto_launch_parent").info(
-                    f"Killing removed nodes: {removed_names}"
-                )
+                rclpy.logging.get_logger("muto_launch_parent").info(f"Killing removed nodes: {removed_names}")
                 self.kill_nodes_by_name(removed_names)
 
         # 3) 'common_nodes' remain untouched
