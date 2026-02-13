@@ -41,7 +41,6 @@ setup(
             "compose_plugin = muto_composer.plugins.compose_plugin:main",
             "provision_plugin = muto_composer.plugins.provision_plugin:main",
             "launch_plugin = muto_composer.plugins.launch_plugin:main",
-            "daemon = muto_composer.introspection.muto_daemon:main",
         ],
     },
 )
