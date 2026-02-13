@@ -44,4 +44,4 @@ jobs:
           cd /tmp/ws
           . /opt/ros/humble/setup.sh
           . install/setup.sh
-          python -m pytest src/composer/test/ -v
+          python3 -m pytest src/composer/test/ -v
