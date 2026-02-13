@@ -38,6 +38,9 @@
 
   <build_depend>python3-jsonschema</build_depend>
   <exec_depend>python3-jsonschema</exec_depend>
+  
+  <depend>python3-requests</depend>
+
   <export>
     <build_type>ament_python</build_type>
   </export>
