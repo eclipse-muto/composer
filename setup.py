@@ -28,7 +28,7 @@ setup(
         (os.path.join("share", PACKAGE_NAME, "config"), glob("config/*.yaml")),
         (os.path.join("share", PACKAGE_NAME, "launch"), glob("launch/*.launch.py")),
     ],
-    install_requires=["docker", "setuptools", "jsonschema"],
+    install_requires=["setuptools", "jsonschema"],
     zip_safe=True,
     maintainer="composiv.ai",
     maintainer_email="info@composiv.ai",
