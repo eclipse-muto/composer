@@ -33,12 +33,13 @@
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>
   <test_depend>python3-pytest</test_depend>
-  <test_depend>ament_cmake_pytest</test_depend>
-  
-
   <build_depend>python3-jsonschema</build_depend>
   <exec_depend>python3-jsonschema</exec_depend>
-  
+
+  <depend>rclpy</depend>
+  <depend>launch_ros</depend>
+  <depend>ament_index_python</depend>
+  <depend>std_srvs</depend>
   <depend>python3-requests</depend>
 
   <export>
