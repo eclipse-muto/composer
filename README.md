@@ -2,7 +2,6 @@
 
 | ROS 2 Distro | Ubuntu | Python | Status |
 |---|---|---|---|
-| Foxy | 20.04 | 3.8 | [![Foxy](https://github.com/ibrahimsel/composer/actions/workflows/ci-foxy.yml/badge.svg)](https://github.com/ibrahimsel/composer/actions/workflows/ci-foxy.yml) |
 | Humble | 22.04 | 3.10 | [![Humble](https://github.com/ibrahimsel/composer/actions/workflows/ci-humble.yml/badge.svg)](https://github.com/ibrahimsel/composer/actions/workflows/ci-humble.yml) |
 | Jazzy | 24.04 | 3.12 | [![Jazzy](https://github.com/ibrahimsel/composer/actions/workflows/ci-jazzy.yml/badge.svg)](https://github.com/ibrahimsel/composer/actions/workflows/ci-jazzy.yml) |
 
@@ -64,8 +63,8 @@ For a detailed overview, refer to the [Architecture Documentation](docs/architec
 
 ### Prerequisites
 
-- **ROS 2 Foxy** or later installed on your system.
-- **Python 3.8** or later.
+- **ROS 2 Humble** or later installed on your system.
+- **Python 3.10** or later.
 - Ensure that you have `colcon` and `rosdep` installed for building and dependency management.
 
 ```bash
