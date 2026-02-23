@@ -44,4 +44,5 @@ jobs:
           cd /tmp/ws
           . /opt/ros/humble/setup.sh
           . install/setup.sh
-          python3 -m pytest src/composer/test/ -v
+          colcon test --python-testing pytest --packages-select muto_composer --event-handlers console_direct+
+          colcon test-result --verbose
