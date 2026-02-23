@@ -37,6 +37,7 @@
   <exec_depend>python3-jsonschema</exec_depend>
 
   <depend>rclpy</depend>
+  <depend>muto_msgs</depend>
   <depend>launch_ros</depend>
   <depend>ament_index_python</depend>
   <depend>std_srvs</depend>
