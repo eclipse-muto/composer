@@ -11,3 +11,4 @@ log
 .devcontainer
 *venv/
 *egg-info/
+.coverage*
