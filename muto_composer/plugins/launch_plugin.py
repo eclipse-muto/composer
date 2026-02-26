@@ -126,8 +126,12 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             self.get_logger().error("Failed to parse source data as JSON.")
             return
 
-        # Get stack name - check metadata.name first, then name, then default
-        stack_name = self._get_stack_name(current)
+        # Get stack name - handle both dict and StackManifest msg objects
+        if isinstance(current, dict):
+            stack_name = self._get_stack_name(current)
+        else:
+            # StackManifest msg: use .name attribute directly
+            stack_name = getattr(current, "name", None) or "default"
         workspace_dir = os.path.join(WORKSPACES_PATH, stack_name.replace(" ", "_"))
 
         def source_script(name: str, script_path: str) -> None:
@@ -390,8 +394,14 @@ class MutoDefaultLaunchPlugin(BasePlugin):
             launch_file: Original launch file name (for tracking)
         """
         # Source the workspace before launching
-        working_dir = os.path.dirname(os.path.dirname(full_path))
-        setup_bash = os.path.join(working_dir, "install", "setup.bash")
+        # Use context.workspace_path (the actual colcon workspace root) rather than
+        # deriving from the launch file path, which breaks for nested package structures.
+        workspace_dir = (
+            context.workspace_path
+            if context and context.workspace_path
+            else os.path.dirname(os.path.dirname(full_path))
+        )
+        setup_bash = os.path.join(workspace_dir, "install", "setup.bash")
         if os.path.exists(setup_bash):
             self._source_workspace(setup_bash)
 

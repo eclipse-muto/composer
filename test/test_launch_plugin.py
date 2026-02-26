@@ -160,6 +160,7 @@ class TestLaunchPlugin(unittest.TestCase):
     @patch("os.environ.update")
     def test_source_workspace(self, mock_environ_update, mock_subprocess_run, mock_get_path):
         mock_current = MagicMock()
+        mock_current.name = "Test Stack"
         mock_current.source = json.dumps({"workspace_name": "/mock/file"})
         # Mock the _get_stack_name method
         with patch.object(self.node, "_get_stack_name", return_value="Test Stack"), patch(
