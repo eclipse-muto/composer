@@ -66,6 +66,10 @@ class MessageRouter:
         if "value" in payload and "stackId" in payload["value"]:
             return payload["value"]["stackId"]
 
+        # Try to extract from top-level stackId
+        if "stackId" in payload:
+            return payload["stackId"]
+
         # Try to extract from metadata
         if "metadata" in payload and "name" in payload["metadata"]:
             return payload["metadata"]["name"]
