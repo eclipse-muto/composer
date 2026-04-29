@@ -270,13 +270,9 @@ class StackAnalyzer:
                 # stackId can be at top level or inside 'value' key
                 stack_id = stack_payload.get("stackId") or stack_payload.get("value", {}).get("stackId")
                 if not stack_id:
-                    stack_id = event.stack_name
-                    if not stack_id:
-                        if self.logger:
-                            self.logger.error(f"Kill action requires stackId for {event.stack_name}")
-                        return
                     if self.logger:
-                        self.logger.warning(f"stackId not found in kill payload, using event.stack_name: {stack_id}")
+                        self.logger.error(f"Kill action requires stackId for {event.stack_name}")
+                    return
 
                 # For kill actions, emit a special analyzed event that skips provisioning/launching
                 analyzed_event = StackAnalyzedEvent(
