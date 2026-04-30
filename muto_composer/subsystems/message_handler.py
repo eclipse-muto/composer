@@ -40,6 +40,11 @@ class MessageRouter:
             payload = json.loads(action.payload)
             stack_name = self._extract_stack_name(payload, f"unknown:{action.method}")
 
+            if action.method == "kill" and "stackId" not in payload:
+                if self.logger:
+                    self.logger.info(f"Adding stackId to kill action payload for {stack_name}")
+                payload["stackId"] = stack_name
+
             event = StackRequestEvent(
                 event_type=EventType.STACK_REQUEST,
                 source_component="message_router",
