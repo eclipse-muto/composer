@@ -21,6 +21,7 @@ from typing import Any
 
 import rclpy
 from muto_msgs.msg import MutoAction
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from std_msgs.msg import String
 
@@ -329,7 +330,9 @@ def main(args=None):
     try:
         rclpy.init(args=args)
         composer = MutoComposer()
-        rclpy.spin(composer)
+        executor = MultiThreadedExecutor()
+        executor.add_node(composer)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     except Exception as e:

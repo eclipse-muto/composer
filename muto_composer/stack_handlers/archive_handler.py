@@ -57,7 +57,7 @@ class ArchiveStackHandler(StackTypeHandler):
         """Double dispatch: delegate to plugin's accept method."""
 
         if context.operation == StackOperation.PROVISION:
-            return self._provision_archive(context, plugin)
+            return self._provision_archive(context, plugin, response)
         elif context.operation == StackOperation.START:
             plugin.source_workspaces(request.input.current)
             return self._start_archive(context, plugin)
@@ -72,7 +72,7 @@ class ArchiveStackHandler(StackTypeHandler):
                 self.logger.warning(f"Unsupported operation for archive stack: {context.operation}")
             return False
 
-    def _provision_archive(self, context: StackContext, plugin: BasePlugin) -> bool:
+    def _provision_archive(self, context: StackContext, plugin: BasePlugin, response=None) -> bool:
         try:
             self.from_archive(context)
             if not self.is_up_to_date:
@@ -84,9 +84,11 @@ class ArchiveStackHandler(StackTypeHandler):
                 self.logger.info("Workspace is up-to-date. Skipping build and provisioning steps.")
             return True
         except Exception as e:
+            if response is not None and hasattr(response, "success"):
+                response.success = False
             if self.logger:
                 self.logger.error(f"Error in apply_to_plugin for archive stack: {e}")
-            return False
+            raise RuntimeError(f"Archive stack provisioning failed: {e}") from e
 
     def _start_archive(self, context: StackContext, plugin: BasePlugin) -> bool:
         try:
@@ -165,7 +167,12 @@ class ArchiveStackHandler(StackTypeHandler):
 
         subdir = props.get("subdir")
         if subdir:
-            resolved_subdir = os.path.join(workspace_dir, subdir)
+            resolved_subdir = os.path.realpath(os.path.join(workspace_dir, str(subdir)))
+            dest_realpath = os.path.realpath(workspace_dir)
+
+            if not resolved_subdir.startswith(dest_realpath + os.sep) and resolved_subdir != dest_realpath:
+                raise ValueError("Path traversal attempt in subdir property")
+
             if os.path.isdir(resolved_subdir):
                 self._move_contents(resolved_subdir, workspace_dir)
             else:
@@ -214,6 +221,7 @@ class ArchiveStackHandler(StackTypeHandler):
 
         if data_b64:
             filename = props.get("filename") or metadata.get("name") or "artifact.tar"
+            filename = os.path.basename(str(filename))
             archive_path = os.path.join(temp_dir, filename)
             try:
                 decoded_bytes = base64.b64decode(data_b64, validate=True)
@@ -241,6 +249,7 @@ class ArchiveStackHandler(StackTypeHandler):
         # URL-based artifact
         parsed = urlparse(url)
         filename = os.path.basename(parsed.path) or "artifact"
+        filename = os.path.basename(str(filename))
         archive_path = os.path.join(temp_dir, filename)
 
         if parsed.scheme in ("http", "https"):
@@ -328,6 +337,21 @@ class ArchiveStackHandler(StackTypeHandler):
     def _extract_archive(self, archive_path: str, destination: str) -> None:
         if tarfile.is_tarfile(archive_path):
             with tarfile.open(archive_path, "r:*") as tar:
+                dest_realpath = os.path.realpath(destination)
+                for member in tar.getmembers():
+                    member_realpath = os.path.realpath(os.path.join(dest_realpath, member.name))
+                    if not member_realpath.startswith(dest_realpath + os.sep) and member_realpath != dest_realpath:
+                        raise ValueError(f"Path traversal attempt detected in tar file: {member.name}")
+
+                    if member.issym() or member.islnk():
+                        link_target_path = os.path.join(os.path.dirname(member_realpath), member.linkname)
+                        link_target_realpath = os.path.realpath(link_target_path)
+                        if (
+                            not link_target_realpath.startswith(dest_realpath + os.sep)
+                            and link_target_realpath != dest_realpath
+                        ):
+                            raise ValueError(f"Symlink/hardlink traversal attempt detected in tar file: {member.name}")
+
                 tar.extractall(destination)
         elif zipfile.is_zipfile(archive_path):
             with zipfile.ZipFile(archive_path, "r") as zipped:
@@ -531,7 +555,7 @@ class ArchiveStackHandler(StackTypeHandler):
             )
         except subprocess.CalledProcessError:
             self.logger.warning("Build failed. Cleaning and retrying...")
-            self.clean_build_workspace()
+            self.clean_build_workspace(context)
             subprocess.run(
                 colcon_command,
                 check=True,
@@ -596,4 +620,9 @@ class ArchiveStackHandler(StackTypeHandler):
 
         metadata = context.metadata
         name = metadata.get("name", context.name)
-        return os.path.join(WORKSPACES_PATH, name.replace(" ", "_"))
+
+        safe_name = str(name).replace(" ", "_").replace("/", "_").replace(":", "_").replace("\\", "_").lstrip(".")
+        if not safe_name:
+            safe_name = "default"
+
+        return os.path.join(WORKSPACES_PATH, safe_name)

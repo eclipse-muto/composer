@@ -132,7 +132,10 @@ class MutoDefaultLaunchPlugin(BasePlugin):
         else:
             # StackManifest msg: use .name attribute directly
             stack_name = getattr(current, "name", None) or "default"
-        workspace_dir = os.path.join(WORKSPACES_PATH, stack_name.replace(" ", "_"))
+        safe_name = str(stack_name).replace(" ", "_").replace("/", "_").replace(":", "_").replace("\\", "_").lstrip(".")
+        if not safe_name:
+            safe_name = "default"
+        workspace_dir = os.path.join(WORKSPACES_PATH, safe_name)
 
         def source_script(name: str, script_path: str) -> None:
             self.get_logger().info(f"Sourcing: {name} | {script_path}")

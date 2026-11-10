@@ -138,9 +138,21 @@ class BasePlugin(Node):
                 if handler:
                     # Get stack name for workspace path
                     stack_name = self._get_stack_name(current_stack)
+
+                    safe_stack_name = (
+                        str(stack_name)
+                        .replace(" ", "_")
+                        .replace("/", "_")
+                        .replace(":", "_")
+                        .replace("\\", "_")
+                        .lstrip(".")
+                    )
+                    if not safe_stack_name:
+                        safe_stack_name = "default"
+
                     workspace_path = os.path.join(
                         WORKSPACES_PATH,
-                        stack_name.replace(" ", "_"),
+                        safe_stack_name,
                     )
 
                     # Create context for double dispatch

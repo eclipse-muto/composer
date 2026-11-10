@@ -210,6 +210,7 @@ from launch.actions.include_launch_description import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 
+
 def generate_launch_description():
     # Arguments
     muto_namespace_arg = DeclareLaunchArgument("muto_namespace", default_value="muto")
@@ -218,9 +219,7 @@ def generate_launch_description():
         default_value="org.eclipse.muto.sandbox",
         description="Vehicle ID namespace",
     )
-    vehicle_name_arg = DeclareLaunchArgument(
-        "vehicle_name", description="Vehicle Name"
-    )
+    vehicle_name_arg = DeclareLaunchArgument("vehicle_name", description="Vehicle Name")
 
     # Files
     muto_params = "config/muto.yaml"
@@ -356,8 +355,6 @@ def generate_launch_description():
     # ld.add_action(launch_introspection)
 
     return ld
-
-
 ```
 
 - Composer uses a configuration file `pipeline.yaml` located in the `composer/config` directory to define the pipelines and their steps. Ensure that this file is properly configured to suit your deployment needs.

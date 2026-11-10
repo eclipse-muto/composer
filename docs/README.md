@@ -179,7 +179,7 @@ class MessageRouter:
             source_component="message_router",
             stack_name=self._extract_stack_name(payload),
             action=action.method,
-            stack_payload=payload
+            stack_payload=payload,
         )
         self.event_bus.publish_sync(event)
 ```
@@ -190,15 +190,9 @@ Manages CoreTwin service communication:
 class ServiceClientManager:
     def __init__(self, node: Node, core_twin_node_name: str = "core_twin"):
         self.node = node
-        self.get_stack_client = node.create_client(
-            CoreTwin, 
-            f"{core_twin_node_name}/get_stack_definition"
-        )
-        self.set_stack_client = node.create_client(
-            CoreTwin, 
-            f"{core_twin_node_name}/set_current_stack"
-        )
-    
+        self.get_stack_client = node.create_client(CoreTwin, f"{core_twin_node_name}/get_stack_definition")
+        self.set_stack_client = node.create_client(CoreTwin, f"{core_twin_node_name}/set_current_stack")
+
     async def get_stack_definition(self, stack_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve stack definition from twin service."""
 ```
@@ -258,15 +252,18 @@ Provides stack type enumeration and execution requirements structure:
 ```python
 class StackType(Enum):
     """Enumeration of stack types."""
+
     ARCHIVE = "stack/archive"
-    JSON = "stack/json" 
+    JSON = "stack/json"
     RAW = "stack/raw"
     LEGACY = "stack/legacy"
     UNKNOWN = "stack/unknown"
 
+
 @dataclass
 class ExecutionRequirements:
     """Stack execution requirements."""
+
     requires_provision: bool = False
     requires_launch: bool = False
     has_nodes: bool = False
@@ -318,39 +315,41 @@ class StackProcessor:
 Determines execution path based on stack analysis (contains the actual stack analysis logic):
 ```python
 class ExecutionPathDeterminer:
-    def determine_path(self, analyzed_event: StackAnalyzedEvent, 
-                      current_stack: Optional[Dict] = None,
-                      next_stack: Optional[Dict] = None) -> ExecutionPath:
+    def determine_path(
+        self,
+        analyzed_event: StackAnalyzedEvent,
+        current_stack: Optional[Dict] = None,
+        next_stack: Optional[Dict] = None,
+    ) -> ExecutionPath:
         """Determine execution path and context variables."""
-        
+
         # Extract stack characteristics
         stack_payload = analyzed_event.stack_payload
         stack_type = analysis_result.get("stack_type", StackType.UNKNOWN.value)
-        
+
         # Complex analysis logic to determine:
         # - should_run_provision
-        # - should_run_launch  
+        # - should_run_launch
         # - requires_merging
-        
+
         # Archive stacks require provision + launch
         if stack_type == StackType.ARCHIVE.value:
             should_run_provision = True
             should_run_launch = True
             requires_merging = False
-        
+
         # JSON stacks require launch + merging
         elif stack_type == StackType.JSON.value:
             should_run_provision = False
             should_run_launch = True
             requires_merging = True
-        
+
         # Additional conditional logic...
-        
+
         return ExecutionPath(
             pipeline_name=analyzed_event.action,
-            context_variables={"should_run_provision": should_run_provision, 
-                             "should_run_launch": should_run_launch},
-            requires_merging=requires_merging
+            context_variables={"should_run_provision": should_run_provision, "should_run_launch": should_run_launch},
+            requires_merging=requires_merging,
         )
 ```
 
@@ -361,15 +360,15 @@ class DeploymentOrchestrator:
     def start_orchestration(self, stack_name: str, action: str, requirements: ExecutionRequirements):
         """Start orchestration process based on stack analysis."""
         orchestration_id = str(uuid.uuid4())
-        
+
         self._active_orchestrations[orchestration_id] = {
             "stack_name": stack_name,
             "action": action,
             "status": "started",
             "requirements": requirements,
-            "start_time": time.time()
+            "start_time": time.time(),
         }
-        
+
         # Determine and execute appropriate pipeline
         if requirements.requires_provision and requirements.requires_launch:
             pipeline_name = "apply"
@@ -377,7 +376,7 @@ class DeploymentOrchestrator:
             pipeline_name = "start"
         else:
             pipeline_name = "kill"
-        
+
         # Request pipeline execution
         self.event_bus.publish_sync(PipelineRequestedEvent(...))
 ```
@@ -404,12 +403,9 @@ Loads and manages pipeline configurations:
 class PipelineManager:
     def __init__(self, config_path: str = None):
         if not config_path:
-            config_path = os.path.join(
-                get_package_share_directory('composer'),
-                'config', 'pipeline.yaml'
-            )
+            config_path = os.path.join(get_package_share_directory("composer"), "config", "pipeline.yaml")
         self.pipelines = self._load_pipeline_config(config_path)
-    
+
     def get_pipeline(self, name: str) -> Optional[Dict]:
         """Get pipeline configuration by name."""
         return self.pipelines.get(name)
@@ -422,11 +418,11 @@ class PipelineExecutor:
     def execute_pipeline(self, pipeline_name: str, context: Dict = None):
         """Execute a pipeline with proper step coordination."""
         pipeline = self.pipeline_manager.get_pipeline(pipeline_name)
-        
-        for step in pipeline.get('steps', []):
+
+        for step in pipeline.get("steps", []):
             # Execute step with proper error handling
             success = self._execute_step(step, context)
-            if not success and step.get('critical', True):
+            if not success and step.get("critical", True):
                 raise PipelineExecutionError(f"Critical step failed: {step['name']}")
 ```
 
@@ -736,16 +732,16 @@ class EventType(Enum):
     STACK_ANALYZED = "stack.analyzed"
     STACK_PROCESSED = "stack.processed"
     STACK_MERGED = "stack.merged"
-    
-    # Orchestration Events  
+
+    # Orchestration Events
     ORCHESTRATION_STARTED = "orchestration.started"
     ORCHESTRATION_COMPLETED = "orchestration.completed"
-    
+
     # Pipeline Events
     PIPELINE_REQUESTED = "pipeline.requested"
     PIPELINE_COMPLETED = "pipeline.completed"
     PIPELINE_FAILED = "pipeline.failed"
-    
+
     # And more...
 ```
 
@@ -788,13 +784,11 @@ class EventType(Enum):
 # Example error handling in pipeline execution
 try:
     success = self._execute_step(step, context)
-    if not success and step.get('critical', True):
+    if not success and step.get("critical", True):
         # Publish failure event
-        self.event_bus.publish_sync(PipelineFailedEvent(
-            pipeline_name=pipeline_name,
-            failed_step=step['name'],
-            error_details=error_message
-        ))
+        self.event_bus.publish_sync(
+            PipelineFailedEvent(pipeline_name=pipeline_name, failed_step=step["name"], error_details=error_message)
+        )
 except Exception as e:
     # Handle unexpected errors
     self._handle_pipeline_error(pipeline_name, step, e)
@@ -869,28 +863,25 @@ The actual service integration uses ROS 2 patterns with proper callback groups a
 class ServiceClientManager:
     def __init__(self, node: Node, core_twin_node_name: str = "core_twin"):
         # Initialize service clients with proper service names
-        self.get_stack_client = node.create_client(
-            CoreTwin, 
-            f"{core_twin_node_name}/get_stack_definition"
-        )
-        
+        self.get_stack_client = node.create_client(CoreTwin, f"{core_twin_node_name}/get_stack_definition")
+
     async def get_stack_definition(self, stack_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve stack definition with service availability checking."""
         try:
             request = CoreTwin.Request()
             request.input = stack_id
-            
+
             # Check service availability with timeout
             if not self.get_stack_client.wait_for_service(timeout_sec=5.0):
                 self.logger.error("CoreTwin service not available")
                 return None
-            
+
             # Use future-based async pattern
             future = self.get_stack_client.call_async(request)
             # Note: In practice, this integrates with ROS 2 executor patterns
-            
+
             return {}  # Processed response
-            
+
         except Exception as e:
             self.logger.error(f"Service call failed: {e}")
             return None
@@ -903,11 +894,9 @@ class TwinServiceClient:
     def __init__(self, node: Node, event_bus: EventBus, logger=None):
         # Use ReentrantCallbackGroup for service calls
         self.callback_group = ReentrantCallbackGroup()
-        
+
         self.core_twin_client = self.node.create_client(
-            CoreTwin,
-            '/core_twin/get_stack_definition',
-            callback_group=self.callback_group
+            CoreTwin, "/core_twin/get_stack_definition", callback_group=self.callback_group
         )
 ```
 
@@ -919,11 +908,7 @@ execution_context = {
     "stack_manifest": processed_stack,
     "execution_requirements": requirements,
     "orchestration_id": orchestration_id,
-    "metadata": {
-        "timestamp": time.time(),
-        "requester": "composer",
-        "pipeline_name": pipeline_name
-    }
+    "metadata": {"timestamp": time.time(), "requester": "composer", "pipeline_name": pipeline_name},
 }
 ```
 
@@ -948,30 +933,31 @@ All plugins follow this foundational structure:
 from rclpy.node import Node
 from muto_msgs.srv import PluginService
 
+
 class MutoPluginBase(Node):
     def __init__(self, node_name: str, service_name: str):
         super().__init__(node_name)
-        
+
         # Create service for pipeline integration
         self.service = self.create_service(PluginService, service_name, self.handle_request)
         self.current_stack = None
-    
+
     def handle_request(self, request, response):
         """Main service handler - implement plugin logic here."""
         try:
             if request.start:
                 # Execute plugin-specific logic
                 result = self.execute_plugin_logic(request)
-                response.success = result['success']
-                response.err_msg = result['message']
+                response.success = result["success"]
+                response.err_msg = result["message"]
             # Handle error cases...
         except Exception as e:
             response.success = False
             response.err_msg = f"Error: {e}"
-        
+
         response.output.current = request.input.current
         return response
-    
+
     def execute_plugin_logic(self, request):
         """Override this method to implement plugin-specific logic."""
         raise NotImplementedError()
@@ -984,17 +970,18 @@ class MutoPluginBase(Node):
 ```python
 from muto_msgs.srv import ComposePlugin
 
+
 class MutoDefaultComposePlugin(Node):
     def __init__(self):
         super().__init__("compose_plugin")
-        
+
         # Service for composition requests
         self.compose_srv = self.create_service(ComposePlugin, "muto_compose", self.handle_compose)
-        
+
         # Stack processing utilities
         self.stack_parser = StackParser(self.get_logger())
         self.stack_pub = self.create_publisher(StackManifest, "composed_stack", 10)
-    
+
     def handle_compose(self, request, response):
         """Handle stack composition requests."""
         if request.start:
@@ -1012,28 +999,29 @@ class MutoDefaultComposePlugin(Node):
 ```python
 from muto_msgs.srv import ProvisionPlugin
 
+
 class MutoProvisionPlugin(Node):
     def __init__(self):
         super().__init__("provision_plugin")
-        
+
         # Service for provisioning requests
         self.provision_srv = self.create_service(ProvisionPlugin, "muto_provision", self.handle_provision)
-        
+
         # Workspace management
         self.workspaces_path = os.path.join("/tmp", "muto", "muto_workspaces")
         self.declare_parameter("ignored_packages", [""])
-    
+
     def handle_provision(self, request, response):
         """Handle workspace provisioning requests."""
         if request.start:
             self.current_stack = self._safely_parse_stack(request.input.current.stack)
             content_type = self.current_stack.get("metadata", {}).get("content_type")
-            
+
             if content_type == "stack/archive":
                 self.from_archive(self.current_stack)
             elif request.input.current.url:
                 self.from_git(request.input.current.url, request.input.current.branch)
-            
+
             # Build workspace if needed...
             response.success = True
         return response
@@ -1045,31 +1033,32 @@ class MutoProvisionPlugin(Node):
 from muto_msgs.srv import LaunchPlugin
 from rclpy.callback_groups import ReentrantCallbackGroup
 
+
 class MutoDefaultLaunchPlugin(Node):
     def __init__(self):
         super().__init__("launch_plugin")
-        
+
         # Use reentrant callback group for concurrent service calls
         self.callback_group = ReentrantCallbackGroup()
-        
+
         # Multiple services for different launch operations
         self.start_srv = self.create_service(LaunchPlugin, "muto_start_stack", self.handle_start)
         self.kill_srv = self.create_service(LaunchPlugin, "muto_kill_stack", self.handle_kill)
         self.apply_srv = self.create_service(LaunchPlugin, "muto_apply_stack", self.handle_apply)
-        
+
         # Process management
         self.running_processes = {}
-    
+
     def handle_start(self, request, response):
         """Handle stack start requests."""
         return self._handle_launch_request(request, response, "start")
-    
+
     def _handle_launch_request(self, request, response, operation):
         """Common handler for all launch operations."""
         if request.start:
             stack_dict = self._safely_parse_stack(request.input.current.stack)
             result = self._execute_launch_operation(stack_dict, operation)
-            response.success = result['success']
+            response.success = result["success"]
         return response
 ```
 
@@ -1130,29 +1119,30 @@ import pytest
 import rclpy
 from your_plugin import YourPlugin
 
+
 class TestYourPlugin:
     def setup_method(self):
         rclpy.init()
         self.plugin = YourPlugin()
-    
+
     def test_successful_request(self):
         request = ServiceType.Request()
         request.start = True
         request.input.current.stack = json.dumps({"test": "data"})
-        
+
         response = ServiceType.Response()
         result = self.plugin.handle_request(request, response)
-        
+
         assert result.success == True
-    
+
     def test_parse_error_handling(self):
         request = ServiceType.Request()
         request.start = True
         request.input.current.stack = "invalid json"
-        
+
         response = ServiceType.Response()
         result = self.plugin.handle_request(request, response)
-        
+
         assert result.success == False
 ```
 
@@ -1177,11 +1167,7 @@ pipelines:
 **2. Launch File Integration:**
 ```python
 # Add to launch file
-your_plugin = Node(
-    package='your_package',
-    executable='your_plugin',
-    name='your_plugin'
-)
+your_plugin = Node(package="your_package", executable="your_plugin", name="your_plugin")
 ```
 
 **3. Package Dependencies:**
@@ -1235,37 +1221,35 @@ Each subsystem can be tested in isolation using dependency injection:
 class TestExecutionPathDeterminer:
     def setup_method(self):
         self.path_determiner = ExecutionPathDeterminer()
-    
+
     def test_archive_stack_execution_path(self):
         analyzed_event = StackAnalyzedEvent(
             event_type=EventType.STACK_ANALYZED,
             source_component="test",
             analysis_result={"stack_type": StackType.ARCHIVE.value},
             action="apply",
-            stack_payload={"metadata": {"content_type": "stack/archive"}}
+            stack_payload={"metadata": {"content_type": "stack/archive"}},
         )
-        
+
         execution_path = self.path_determiner.determine_path(analyzed_event)
         assert execution_path.context_variables["should_run_provision"] == True
         assert execution_path.context_variables["should_run_launch"] == True
+
 
 # Example MessageHandler testing with mock ROS 2 node
 class TestMessageHandler:
     def setup_method(self):
         self.mock_node = MockNode()
         self.event_bus = EventBus()
-        self.message_handler = MessageHandler(
-            node=self.mock_node,
-            event_bus=self.event_bus
-        )
-    
+        self.message_handler = MessageHandler(node=self.mock_node, event_bus=self.event_bus)
+
     def test_muto_action_routing(self):
         action = MutoAction()
         action.method = "apply"
         action.payload = '{"metadata": {"content_type": "stack/json"}}'
-        
+
         self.message_handler.handle_muto_action(action)
-        
+
         # Verify event was published
         assert self.event_bus.last_published_event.event_type == EventType.STACK_REQUEST
 ```
@@ -1278,45 +1262,43 @@ Integration tests verify event flow between subsystems using actual ROS 2 patter
 def test_complete_stack_processing_flow():
     # Setup MutoComposer with real subsystems
     composer = MutoComposer()
-    
+
     # Create test MutoAction message
     action = MutoAction()
-    action.method = "apply" 
-    action.payload = json.dumps({
-        "metadata": {"content_type": "stack/archive"},
-        "launch": {"data": "test_data"}
-    })
-    
+    action.method = "apply"
+    action.payload = json.dumps({"metadata": {"content_type": "stack/archive"}, "launch": {"data": "test_data"}})
+
     # Track events through the system
     event_tracker = EventTracker()
     composer.event_bus.add_listener(event_tracker.track_event)
-    
+
     # Simulate message processing
     composer.on_stack_callback(action)
-    
+
     # Verify complete event flow
     assert event_tracker.was_published(EventType.STACK_REQUEST)
     assert event_tracker.was_published(EventType.STACK_ANALYZED)
     assert event_tracker.was_published(EventType.ORCHESTRATION_STARTED)
     assert event_tracker.was_published(EventType.PIPELINE_REQUESTED)
 
+
 # Test subsystem integration
 def test_orchestration_manager_integration():
     event_bus = EventBus()
     orchestration_manager = OrchestrationManager(event_bus)
-    
+
     # Simulate analyzed stack event
     analyzed_event = StackAnalyzedEvent(
         event_type=EventType.STACK_ANALYZED,
         source_component="test",
         analysis_result={"stack_type": "stack/json"},
         action="apply",
-        stack_payload={"node": "test_node"}
+        stack_payload={"node": "test_node"},
     )
-    
+
     # Process event
     orchestration_manager.orchestrator.handle_stack_analyzed(analyzed_event)
-    
+
     # Verify orchestration started
     assert len(orchestration_manager.orchestrator.active_orchestrations) == 1
 ```
@@ -1326,43 +1308,46 @@ def test_orchestration_manager_integration():
 ```python
 class MockNode:
     """Mock ROS 2 node for testing."""
+
     def __init__(self):
         self.publishers = {}
         self.clients = {}
         self.subscriptions = {}
-        
+
     def create_publisher(self, msg_type, topic, qos):
         self.publishers[topic] = MockPublisher()
         return self.publishers[topic]
-        
+
     def create_client(self, srv_type, service_name, **kwargs):
         self.clients[service_name] = MockServiceClient()
         return self.clients[service_name]
-        
+
     def create_subscription(self, msg_type, topic, callback, qos):
         self.subscriptions[topic] = MockSubscription(callback)
         return self.subscriptions[topic]
 
+
 class MockServiceClient:
     def __init__(self):
         self.responses = {}
-        
+
     def wait_for_service(self, timeout_sec=5.0):
         return True  # Always available in tests
-        
+
     def call_async(self, request):
         # Return mock future
         return MockFuture(self.responses.get(request.input, {}))
+
 
 class MockEventBus:
     def __init__(self):
         self.published_events = []
         self.subscribers = {}
-        
+
     def publish_sync(self, event):
         self.published_events.append(event)
         self.last_published_event = event
-        
+
     def was_published(self, event_type):
         return any(e.event_type == event_type for e in self.published_events)
 ```
@@ -1398,8 +1383,10 @@ class CustomSubsystem:
 @dataclass
 class CustomEvent(BaseComposeEvent):
     """Custom event for extended functionality."""
+
     custom_data: Dict[str, Any]
-    
+
+
 class EventType:
     CUSTOM_EVENT = "custom.event"
 ```
